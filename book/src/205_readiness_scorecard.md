@@ -2,36 +2,36 @@
 
 ## Current posture
 
-PARC has a strong checked schema-v2 contract and a deterministic public H1
+PARC has a checked schema-v2 contract and a deterministic, resource-bounded H2
 producer for one explicitly configured translation unit. Parser/AST coverage is
-broader than contract-producing scan coverage.
+broader than the certified contract-producing preprocessing subset.
 
-Current scans are intentionally **not complete**: declarations point into a
-generated preprocessed file, the macro table is empty, and original include and
-macro-expansion provenance is unproven. `PARC-P0001` makes that limitation
-machine-checkable.
+Built-in scans may be complete when original files, ranges, includes, macros,
+and expansions are traced and every declaration/type is modeled. External
+scans remain generated-source `Partial`; `PARC-P0001` makes that provenance
+boundary machine-checkable.
 
 ## Evidence by subsystem
 
 | Subsystem | Posture |
 | --- | --- |
-| Contract schema, codec, IDs, and validation | Frozen H1 evidence |
-| Explicit scan configuration and relocation | H1 evidence |
-| Two-pass declaration/type lowering | Focused H1 fixtures; unsupported paths remain diagnostic |
+| Contract schema, codec, IDs, and validation | Frozen schema-v2 evidence |
+| Explicit scan configuration and relocation | H2 bounded deterministic evidence |
+| Two-pass declaration/type lowering | Exact-type fixtures; unsupported paths remain diagnostic |
 | Parser, AST traversal, and printing | Broad repository fixtures |
 | Built-in preprocessing | Controlled fixtures; not universal host-header parity |
-| Original include/macro provenance | H2 gap |
-| Complete contract macro inventory | H2 gap |
-| Cross-translation-unit merge semantics | Out of H1 scope |
+| Original include/macro provenance | Traced for the certified built-in subset |
+| Complete contract macro inventory | Effective active built-in definitions; external remains unproved |
+| Cross-translation-unit merge semantics | Checked target/input compatibility and stable-ID conflict rejection |
+| Resource safety | Producer ceilings plus external process-group timeout/output enforcement |
 | ABI layout, symbols, linking, Rust generation | Downstream ownership |
 
 ## What raises readiness
 
 Readiness increases only when evidence closes a forcing gap, for example:
 
-- content-addressed transitive include tables;
-- exact macro definition and expansion provenance;
-- compiler-backed parity fixtures tied to explicit target identities;
+- broader certified compiler-extension and system-header coverage;
+- more target families with compiler-backed parity fixtures;
 - broader adversarial declaration/type preservation;
 - downstream integration using only canonical serialized artifacts.
 

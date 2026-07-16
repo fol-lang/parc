@@ -20,6 +20,10 @@ fn integer(storage_bits: u16, alignment_bits: u16, signedness: Signedness) -> In
 }
 
 fn target() -> TargetSpec {
+    target_with_standard(LanguageStandard::C17)
+}
+
+fn target_with_standard(language_standard: LanguageStandard) -> TargetSpec {
     let triple = "x86_64-unknown-linux-gnu";
     TargetSpec::try_new(TargetSpecParts {
         triple: triple.to_owned(),
@@ -59,7 +63,7 @@ fn target() -> TargetSpec {
             size_t_layout: integer(64, 64, Signedness::Unsigned),
             ptrdiff_t_layout: integer(64, 64, Signedness::Signed),
         },
-        language_standard: LanguageStandard::C17,
+        language_standard,
         extension_profile: ExtensionProfile::new(
             ExtensionFamily::Gnu,
             [ExtensionId::try_new("attributes").unwrap()],
@@ -990,6 +994,181 @@ fn partial_package_cannot_be_forged_into_complete() {
         .blockers()
         .iter()
         .any(|blocker| matches!(blocker, CompletionBlocker::PackageIncomplete { .. })));
+}
+
+#[test]
+fn retain_keeps_the_exact_transitive_reference_closure() {
+    let open = named_id(EntityNamespace::Ordinary, "parc_open");
+    let alias = named_id(EntityNamespace::Ordinary, "parc_handle");
+    let opaque = named_id(EntityNamespace::Tag, "parc_opaque");
+    let extended = named_id(EntityNamespace::Ordinary, "parc_extended");
+
+    let retained = partial_package()
+        .retain(&Selection::only([open]).unwrap())
+        .unwrap();
+    let ids = retained
+        .declarations()
+        .iter()
+        .map(|declaration| declaration.id)
+        .collect::<std::collections::BTreeSet<_>>();
+    assert_eq!(ids, [open, alias, opaque].into_iter().collect());
+    assert_eq!(retained.completeness(), &Completeness::Complete);
+    assert!(retained.diagnostics().is_empty());
+    assert!(retained.declaration(extended).is_none());
+    assert_eq!(retained.files(), partial_package().files());
+    assert_eq!(retained.macros(), partial_package().macros());
+
+    retained
+        .into_complete(&Selection::only([open]).unwrap())
+        .unwrap();
+}
+
+#[test]
+fn retain_validates_explicit_and_opaque_roots() {
+    let missing = named_id(EntityNamespace::Ordinary, "not_present");
+    assert!(matches!(
+        complete_package().retain(&Selection::only([missing]).unwrap()),
+        Err(ComposeError::MissingDeclaration { id }) if id == missing
+    ));
+
+    let function = named_id(EntityNamespace::Ordinary, "parc_open");
+    assert!(matches!(
+        complete_package().retain(&Selection::opaque([function]).unwrap()),
+        Err(ComposeError::OpaqueRootIsNotRecord { id }) if id == function
+    ));
+}
+
+#[test]
+fn merge_unions_compatible_entry_sets_and_reference_closed_fragments() {
+    let package = complete_package();
+    assert_eq!(package.clone().merge(package.clone()).unwrap(), package);
+
+    let open = named_id(EntityNamespace::Ordinary, "parc_open");
+    let alias = named_id(EntityNamespace::Ordinary, "parc_handle");
+    let opaque = named_id(EntityNamespace::Tag, "parc_opaque");
+    let packet = named_id(EntityNamespace::Tag, "parc_packet");
+    let left = package.retain(&Selection::only([open]).unwrap()).unwrap();
+    let right = package.retain(&Selection::only([packet]).unwrap()).unwrap();
+    let merged = left.merge(right).unwrap();
+    let ids = merged
+        .declarations()
+        .iter()
+        .map(|declaration| declaration.id)
+        .collect::<std::collections::BTreeSet<_>>();
+    assert_eq!(ids, [open, alias, opaque, packet].into_iter().collect());
+    assert_eq!(merged.completeness(), &Completeness::Complete);
+
+    let extra_path = "include/second-entry.h";
+    let extra_file = FileId::from_logical_path(extra_path).unwrap();
+    let extra_bytes = b"\n";
+    let mut extra = fixture_input(false);
+    extra.files = vec![SourceFile {
+        id: extra_file,
+        logical_path: extra_path.to_owned(),
+        role: SourceFileRole::Entry,
+        content: ContentFingerprint::from_content(extra_bytes),
+        byte_len: extra_bytes.len() as u64,
+        line_starts: vec![0],
+    }];
+    extra.inputs.entry_files = vec![extra_file];
+    extra.declarations.clear();
+    extra.macros.clear();
+    let merged_entries = package
+        .merge(SourcePackage::try_new(extra).unwrap())
+        .unwrap();
+    let expected_entries = merged_entries
+        .inputs()
+        .entry_files
+        .iter()
+        .copied()
+        .collect::<std::collections::BTreeSet<_>>();
+    assert_eq!(expected_entries.len(), 2);
+    assert!(expected_entries.contains(&extra_file));
+    assert_eq!(merged_entries.files().len(), 2);
+}
+
+#[test]
+fn merge_recomputes_completeness_from_the_diagnostic_union() {
+    let mut partial = fixture_input(false);
+    let code = DiagnosticCode::new("PARC-P4200").unwrap();
+    let message = "composition fixture remains partial".to_owned();
+    partial.diagnostics.push(SourceDiagnostic {
+        code: code.clone(),
+        stage: DiagnosticStage::Contract,
+        severity: Severity::Warning,
+        completeness_impact: DiagnosticCompletenessImpact::ForcesPartial,
+        message: message.clone(),
+        range: None,
+        related: Vec::new(),
+        declaration: None,
+        target: partial.target.fingerprint(),
+    });
+    partial.completeness = Completeness::Partial {
+        reasons: vec![CompletenessReason {
+            code,
+            message,
+            range: None,
+        }],
+    };
+    let merged = complete_package()
+        .merge(SourcePackage::try_new(partial).unwrap())
+        .unwrap();
+    assert!(matches!(
+        merged.completeness(),
+        Completeness::Partial { .. }
+    ));
+    assert_eq!(merged.diagnostics().len(), 1);
+}
+
+#[test]
+fn merge_rejects_target_input_and_stable_id_conflicts() {
+    let package = complete_package();
+
+    let mut wrong_target = fixture_input(false);
+    wrong_target.target = target_with_standard(LanguageStandard::C11);
+    assert!(matches!(
+        package
+            .clone()
+            .merge(SourcePackage::try_new(wrong_target).unwrap()),
+        Err(ComposeError::IncompatibleTarget)
+    ));
+
+    let mut wrong_inputs = fixture_input(false);
+    wrong_inputs.inputs.define_events.push(DefineEvent::Define {
+        name: "OTHER_MODE".to_owned(),
+        value: Some("1".to_owned()),
+    });
+    assert!(matches!(
+        package
+            .clone()
+            .merge(SourcePackage::try_new(wrong_inputs).unwrap()),
+        Err(ComposeError::IncompatibleSourceInputs {
+            field: "define_events"
+        })
+    ));
+
+    let mut conflicting_file = fixture_input(false);
+    let file_id = conflicting_file.files[0].id;
+    conflicting_file.files[0].content = ContentFingerprint::from_content(b"different content");
+    assert!(matches!(
+        package
+            .clone()
+            .merge(SourcePackage::try_new(conflicting_file).unwrap()),
+        Err(ComposeError::ConflictingFile { id }) if id == file_id
+    ));
+
+    let mut conflicting_declaration = fixture_input(false);
+    let open = named_id(EntityNamespace::Ordinary, "parc_open");
+    conflicting_declaration
+        .declarations
+        .iter_mut()
+        .find(|declaration| declaration.id == open)
+        .unwrap()
+        .linkage = Linkage::None;
+    assert!(matches!(
+        package.merge(SourcePackage::try_new(conflicting_declaration).unwrap()),
+        Err(ComposeError::ConflictingDeclaration { id }) if id == open
+    ));
 }
 
 #[test]

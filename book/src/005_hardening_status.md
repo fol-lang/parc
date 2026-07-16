@@ -1,8 +1,8 @@
 # Hardening Status
 
-PARC now exposes the checked H1 source-package contract and a single public
-header-to-contract producer. This is a contract milestone, not a production or
-whole-toolchain certification.
+PARC exposes the checked schema-v2 source-package contract and the bounded H2
+header-to-contract producer. This is source-frontend evidence, not arbitrary
+host-header or whole-toolchain certification.
 
 ## Identity and schema
 
@@ -17,14 +17,20 @@ whole-toolchain certification.
 ## Evidence boundary
 
 The checked contract preserves explicit target identity, effective inputs,
-logical files, declarations, diagnostics, completeness, and canonical IDs. Its
-decoder rejects unknown schema versions and forged cross-references.
+logical files, declarations, macros, diagnostics, completeness, provenance,
+and canonical IDs. Its decoder rejects unknown schema versions and forged
+cross-references. `retain` closes over declaration references; `merge` rejects
+target, input, file, declaration, and macro conflicts before rebuilding a
+checked fingerprint.
 
-Current scans deliberately stop at generated-preprocessed provenance.
-`PARC-P0001` therefore forces `Completeness::Partial`; transitive include
-content and macro-expansion provenance are not silently invented. Layout,
-binary symbols, link facts, and Rust-generation facts remain downstream
-responsibilities.
+The built-in scan path traces original ranges, transitive include content,
+include chains, effective macro definitions, and macro expansions. It may be
+`Complete` only when no forcing gap remains. Unsupported directives or macro
+operators, malformed conditionals, recovery, type uncertainty, and resource
+ceilings are structured `Partial` or `Rejected` outcomes. External preprocessing
+still carries `PARC-P0001` because generated compiler output cannot prove
+original provenance. Layout, binary symbols, link facts, and Rust-generation
+facts remain downstream responsibilities.
 
 The old public `ir`, `intake`, and direct extractor routes do not exist. Parser
 and AST APIs remain available for syntax-oriented consumers, but they do not
@@ -39,7 +45,7 @@ construct a source contract.
 | `make check-features` | Default, all-feature, and no-default checks |
 | `make test` | Repository tests and doctests |
 | `make test-contract` | Frozen contract corpus and scan preservation |
-| `make test-contract-system` | Required compiler-backed enum-representation probe |
+| `make test-contract-system` | Required GCC enum and GCC/Clang differential evidence |
 | `make test-package` | Package archive and clean-consumer check |
 | `make test-system` | Compiler/header-dependent test group |
 | `make docs-check` | mdBook and Rust API documentation |

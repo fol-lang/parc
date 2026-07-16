@@ -19,8 +19,9 @@ let package = report.package();
 ```
 
 Use this path when another stage needs a `SourcePackage`. Check completeness
-before consuming declarations; current generated-source scans are partial.
-The remaining workflows are syntax-oriented and do not construct a contract.
+before consuming declarations: traced built-in scans may be complete, while
+external generated-source scans remain partial. The remaining workflows are
+syntax-oriented and do not construct a contract.
 
 ## Workflow 1: Parse A Real C File
 

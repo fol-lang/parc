@@ -58,6 +58,7 @@ test-contract:
 
 test-contract-system:
 	@PARC_SYSTEM_TEST_MODE="$(SYSTEM_TEST_MODE)" bash tools/run-filtered-test.sh cargo test --lib --features system-tests contract_preservation_gcc_enum_representation -- --nocapture
+	@PARC_SYSTEM_TEST_MODE="$(SYSTEM_TEST_MODE)" bash tools/run-filtered-test.sh cargo test --lib --features system-tests certified_builtin_and_gcc_clang_external_scans_agree_or_report_exact_differences -- --nocapture
 
 test-package:
 	@CPATH= C_INCLUDE_PATH= tools/test-package.sh follang-parc parc

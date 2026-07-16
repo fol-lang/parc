@@ -14,12 +14,12 @@ diagnostics together.
 | Known calling conventions | Modeled when unambiguous | Malformed or conflicting attributes force rejection |
 | `visibility` attributes | Modeled when exact | Unknown values, malformed arguments, or conflicts force rejection |
 | Other ABI-relevant attributes | Partial | Spelling/range is preserved and `PARC-P1205` forces partial completeness |
-| Macro-heavy include stacks | Generated-source partial | Parsing may succeed, but original macro/include provenance is not claimed |
-| Cross-translation-unit declarations | Out of scope | H1 scans exactly one entry translation unit at a time |
+| Macro-heavy include stacks | Mode-dependent | Certified built-in constructs are traced; unsupported operators reject and external output remains provenance-partial |
+| Cross-translation-unit declarations | Checked composition only | Each scan has one entry; `merge` requires target/input compatibility and rejects stable-ID conflicts |
 
 Named parser corpora demonstrate behavior on those fixtures only. They do not
-upgrade an H1 scan to complete provenance or establish universal compiler/SDK
-compatibility.
+upgrade an external scan to complete provenance or establish universal
+compiler/SDK compatibility.
 
 ## Semantic boundary
 
@@ -38,10 +38,12 @@ contract.
 
 ## Macro inventory and provenance
 
-Schema v2 has a first-class macro table and macro-provenance types. The current
-H1 `scan_headers` producer intentionally emits an empty macro table because it
-cannot yet prove original definition and expansion ranges after preprocessing.
-`PARC-P0001` records that gap and forces `Completeness::Partial`.
+Schema v2 has a first-class macro table and macro-provenance types. The traced
+built-in `scan_headers` producer records the final effective macro definitions
+and original definition/invocation ranges. It rejects unsupported `#`/`##` and
+ambiguous redefinitions rather than fabricating values. External preprocessing
+cannot prove the same source history, so `PARC-P0001` records that gap and
+forces `Completeness::Partial`.
 
 Driver utilities may inspect active preprocessing macros, but their output is
 not a substitute for checked `SourcePackage` macro evidence.
@@ -65,5 +67,6 @@ outcomes, not silent success.
 
 Use `ScanReport::into_complete` or `SourcePackage::into_complete` with an
 explicit `Selection`. Do not special-case away forcing diagnostics, infer
-completeness from parser success, or merge independent entry headers into a
-single translation unit.
+completeness from parser success, or concatenate independent entry headers into
+a single translation unit. Use checked package `merge` only when its target and
+source-input compatibility checks succeed.

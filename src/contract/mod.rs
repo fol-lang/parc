@@ -7,6 +7,7 @@
 mod canonical;
 mod codec;
 mod complete;
+mod compose;
 pub mod corpus;
 mod declarations;
 mod diagnostics;
@@ -34,6 +35,7 @@ pub use complete::{
     ClosureRequirement, CompleteSourcePackage, CompletionBlocker, DeclarationClosureEntry,
     IncompleteSource,
 };
+pub use compose::ComposeError;
 pub use declarations::*;
 pub use diagnostics::*;
 pub use exact_integer::ExactInteger;

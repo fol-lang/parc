@@ -20,7 +20,9 @@ C entry header -> parc::scan -> parc::contract::SourcePackage -> downstream
 
 The former `parc::ir`, `parc::intake`, public `parc::extract` functions,
 `SourcePackageBuilder`, in-place filtering, and lossy package merge APIs have no
-compatibility layer.
+compatibility layer. Use `SourcePackage::retain` for a checked transitive
+declaration projection and `SourcePackage::merge` for target/input-compatible
+artifacts; stable-ID conflicts are errors rather than overwrite rules.
 
 ## Type references
 

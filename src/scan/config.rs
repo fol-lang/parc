@@ -2,6 +2,7 @@
 
 use std::collections::BTreeSet;
 use std::path::{Component, Path, PathBuf};
+use std::time::Duration;
 
 use thiserror::Error;
 
@@ -12,6 +13,76 @@ use crate::contract::{
 use crate::driver::Flavor;
 
 const DEFAULT_GENERATED_PATH: &str = "__parc_generated__/translation-unit.i";
+
+/// Producer resource ceilings. These are fail-closed execution policy, not
+/// target facts, and therefore do not affect artifact identity unless a limit
+/// is hit and produces a forcing diagnostic.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ScanLimits {
+    pub max_input_file_bytes: u64,
+    pub max_total_input_bytes: u64,
+    pub max_include_depth: usize,
+    pub max_include_count: usize,
+    pub max_macro_definitions: usize,
+    pub max_macro_expansions: usize,
+    /// Maximum number of simultaneously expanding macros. This bounds the
+    /// implementation stack independently of the total expansion-work limit.
+    pub max_macro_expansion_depth: usize,
+    pub max_tokens: usize,
+    pub max_generated_bytes: u64,
+    pub external_timeout: Duration,
+    pub max_external_output_bytes: u64,
+}
+
+impl ScanLimits {
+    pub const fn production() -> Self {
+        Self {
+            max_input_file_bytes: 16 * 1024 * 1024,
+            max_total_input_bytes: 64 * 1024 * 1024,
+            max_include_depth: 128,
+            max_include_count: 4_096,
+            max_macro_definitions: 100_000,
+            max_macro_expansions: 1_000_000,
+            max_macro_expansion_depth: 256,
+            max_tokens: 4_000_000,
+            max_generated_bytes: 64 * 1024 * 1024,
+            external_timeout: Duration::from_secs(30),
+            max_external_output_bytes: 64 * 1024 * 1024,
+        }
+    }
+
+    fn is_valid(&self) -> bool {
+        let production = Self::production();
+        self.max_input_file_bytes > 0
+            && self.max_input_file_bytes <= production.max_input_file_bytes
+            && self.max_total_input_bytes > 0
+            && self.max_total_input_bytes <= production.max_total_input_bytes
+            && self.max_include_depth > 0
+            && self.max_include_depth <= production.max_include_depth
+            && self.max_include_count > 0
+            && self.max_include_count <= production.max_include_count
+            && self.max_macro_definitions > 0
+            && self.max_macro_definitions <= production.max_macro_definitions
+            && self.max_macro_expansions > 0
+            && self.max_macro_expansions <= production.max_macro_expansions
+            && self.max_macro_expansion_depth > 0
+            && self.max_macro_expansion_depth <= production.max_macro_expansion_depth
+            && self.max_tokens > 0
+            && self.max_tokens <= production.max_tokens
+            && self.max_generated_bytes > 0
+            && self.max_generated_bytes <= production.max_generated_bytes
+            && !self.external_timeout.is_zero()
+            && self.external_timeout <= production.external_timeout
+            && self.max_external_output_bytes > 0
+            && self.max_external_output_bytes <= production.max_external_output_bytes
+    }
+}
+
+impl Default for ScanLimits {
+    fn default() -> Self {
+        Self::production()
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum PathMappingError {
@@ -284,12 +355,16 @@ pub enum ScanConfigError {
     },
     #[error("an operational sysroot is valid only for an external preprocessor whose target declares a sysroot")]
     InvalidOperationalSysroot,
-    #[error("H1 scanning accepts exactly one entry header; multiple translation units must be scanned independently")]
+    #[error("scanning accepts exactly one entry header; multiple translation units must be scanned independently")]
     MultipleEntryHeaders,
     #[error("unsupported target visibility argument: {0}")]
     UnsupportedVisibilityArgument(String),
     #[error("mapped source path collides with the reserved generated path: {0}")]
     GeneratedPathCollision(String),
+    #[error(
+        "every scan resource limit must be nonzero and no greater than the production ceiling"
+    )]
+    InvalidLimits,
     #[error(transparent)]
     PathMapping(#[from] PathMappingError),
 }
@@ -308,6 +383,7 @@ pub struct ScanConfig {
     pub(crate) system_include_dirs: Vec<PathBuf>,
     pub(crate) define_events: Vec<DefineEvent>,
     pub(crate) external_sysroot: Option<PathBuf>,
+    pub(crate) limits: ScanLimits,
 }
 
 impl ScanConfig {
@@ -339,6 +415,7 @@ impl ScanConfig {
             system_include_dirs: Vec::new(),
             define_events: Vec::new(),
             external_sysroot: None,
+            limits: ScanLimits::production(),
         })
     }
 
@@ -386,6 +463,18 @@ impl ScanConfig {
         self
     }
 
+    pub fn with_limits(mut self, limits: ScanLimits) -> Result<Self, ScanConfigError> {
+        if !limits.is_valid() {
+            return Err(ScanConfigError::InvalidLimits);
+        }
+        self.limits = limits;
+        Ok(self)
+    }
+
+    pub fn limits(&self) -> &ScanLimits {
+        &self.limits
+    }
+
     pub fn target(&self) -> &TargetSpec {
         &self.target
     }
@@ -409,6 +498,9 @@ impl ScanConfig {
     /// directory: all source and include arguments must be explicit absolute
     /// paths covered by [`PathMapping`].
     pub fn validate(&self) -> Result<(), ScanConfigError> {
+        if !self.limits.is_valid() {
+            return Err(ScanConfigError::InvalidLimits);
+        }
         if self.entry_headers.len() > 1 {
             return Err(ScanConfigError::MultipleEntryHeaders);
         }

@@ -1,8 +1,8 @@
 # Hardening Matrix
 
 Confidence is separated by evidence type. A parser fixture cannot prove a
-checked source contract, and a generated-source scan cannot prove original
-macro provenance.
+checked source contract, and external generated-source text cannot prove
+original macro provenance.
 
 ## Required hermetic evidence
 
@@ -24,6 +24,7 @@ zero-test filter so a rename cannot silently greenwash the lane.
 Current required system evidence covers:
 
 - the GCC enum-representation preservation corpus;
+- certified built-in versus GCC and Clang declaration/type differential checks;
 - external-fixture refresh metadata;
 - the manifest-driven full-app system runner.
 
@@ -34,7 +35,10 @@ OpenSSL, libcurl, libc, SDK, or host-header support.
 
 Hardening tests also prove that PARC reports uncertainty:
 
-- generated provenance forces `PARC-P0001` and partial completeness;
+- external generated provenance forces `PARC-P0001` and partial completeness;
+- unsupported directives, pragmas, macro operators, and conditional forms fail
+  closed with exact codes;
+- include, macro, token, input, output, and process ceilings are bounded;
 - structured parser recovery retains skipped ranges;
 - malformed visibility and conflicting calling conventions reject;
 - unknown ABI-relevant attributes preserve spelling and force partial;
@@ -43,7 +47,7 @@ Hardening tests also prove that PARC reports uncertainty:
 
 ## Interpretation
 
-A green H1 matrix means the schema, checked construction, deterministic
-single-translation-unit scan, and stated parser fixtures hold. It does not mean
-complete preprocessing, macro inventory, layout proof, or whole-toolchain
-production certification.
+A green H2 matrix means the schema, checked construction, deterministic traced
+built-in scan, bounded failure paths, composition checks, and stated compiler
+fixtures hold. It does not mean arbitrary compiler-extension or host-SDK
+preprocessing, layout proof, or whole-toolchain production certification.

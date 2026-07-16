@@ -15,12 +15,14 @@ pub(crate) struct TypeResolver<'a> {
     anonymous_tags: &'a BTreeMap<(usize, usize), DeclarationId>,
     pointer_aliases: &'a BTreeSet<DeclarationId>,
     source: &'a str,
+    int128_supported: bool,
 }
 
 pub(crate) struct LoweredParameter {
     pub(crate) name: Option<String>,
     pub(crate) ty: CType,
     pub(crate) span: Span,
+    pub(crate) extensions: Vec<Node<Extension>>,
 }
 
 pub(crate) struct LoweredFunctionParts {
@@ -36,6 +38,7 @@ impl<'a> TypeResolver<'a> {
         anonymous_tags: &'a BTreeMap<(usize, usize), DeclarationId>,
         pointer_aliases: &'a BTreeSet<DeclarationId>,
         source: &'a str,
+        int128_supported: bool,
     ) -> Self {
         Self {
             ordinary,
@@ -43,6 +46,7 @@ impl<'a> TypeResolver<'a> {
             anonymous_tags,
             pointer_aliases,
             source,
+            int128_supported,
         }
     }
 
@@ -58,8 +62,15 @@ impl<'a> TypeResolver<'a> {
                 _ => None,
             })
             .collect();
-        let (qualifiers, nullability) = declaration_qualifiers(specifiers);
-        self.finish_type(type_specs, declarator, qualifiers, nullability, false)
+        let (qualifiers, nullability, conflicting_nullability) = declaration_qualifiers(specifiers);
+        self.finish_type(
+            type_specs,
+            declarator,
+            qualifiers,
+            nullability,
+            conflicting_nullability,
+            false,
+        )
     }
 
     pub(crate) fn field_type(
@@ -74,8 +85,15 @@ impl<'a> TypeResolver<'a> {
                 _ => None,
             })
             .collect();
-        let (qualifiers, nullability) = field_qualifiers(specifiers);
-        self.finish_type(type_specs, declarator, qualifiers, nullability, false)
+        let (qualifiers, nullability, conflicting_nullability) = field_qualifiers(specifiers);
+        self.finish_type(
+            type_specs,
+            declarator,
+            qualifiers,
+            nullability,
+            conflicting_nullability,
+            false,
+        )
     }
 
     fn parameter_type(
@@ -90,8 +108,15 @@ impl<'a> TypeResolver<'a> {
                 _ => None,
             })
             .collect();
-        let (qualifiers, nullability) = declaration_qualifiers(specifiers);
-        self.finish_type(type_specs, declarator, qualifiers, nullability, true)
+        let (qualifiers, nullability, conflicting_nullability) = declaration_qualifiers(specifiers);
+        self.finish_type(
+            type_specs,
+            declarator,
+            qualifiers,
+            nullability,
+            conflicting_nullability,
+            true,
+        )
     }
 
     fn finish_type(
@@ -100,8 +125,15 @@ impl<'a> TypeResolver<'a> {
         declarator: Option<&Declarator>,
         qualifiers: TypeQualifiers,
         nullability: Nullability,
+        conflicting_nullability: bool,
         parameter_array_allowed: bool,
     ) -> CType {
+        if conflicting_nullability {
+            return unsupported(
+                UnsupportedTypeCategory::InvalidSpecifierCombination,
+                "conflicting nullability qualifiers",
+            );
+        }
         let mut ty = self.base_type(&type_specs);
         ty.qualifiers.is_const |= qualifiers.is_const;
         ty.qualifiers.is_volatile |= qualifiers.is_volatile;
@@ -186,10 +218,29 @@ impl<'a> TypeResolver<'a> {
                     &parameter.node.specifiers,
                     declarator.map(|value| &value.node),
                 );
+                let mut extensions = declarator.map_or_else(
+                    || {
+                        parameter
+                            .node
+                            .specifiers
+                            .iter()
+                            .filter_map(|specifier| match &specifier.node {
+                                DeclarationSpecifier::Extension(values) => Some(values.clone()),
+                                _ => None,
+                            })
+                            .flatten()
+                            .collect()
+                    },
+                    |declarator| {
+                        super::declaration_extensions(&parameter.node.specifiers, &declarator.node)
+                    },
+                );
+                extensions.extend(parameter.node.extensions.iter().cloned());
                 LoweredParameter {
                     name,
                     ty,
                     span: parameter.span,
+                    extensions,
                 }
             })
             .collect()
@@ -350,11 +401,26 @@ impl<'a> TypeResolver<'a> {
                             _ => None,
                         })
                         .collect();
-                    let mut ty = self.base_type(&inner_specs);
-                    ty.qualifiers.is_atomic = true;
-                    if let Some(declarator) = &type_name.node.declarator {
-                        ty = self.apply_derived(ty, &declarator.node, false);
+                    let (qualifiers, nullability, conflict) =
+                        field_qualifiers(&type_name.node.specifiers);
+                    let mut ty = self.finish_type(
+                        inner_specs,
+                        type_name.node.declarator.as_ref().map(|value| &value.node),
+                        qualifiers,
+                        nullability,
+                        conflict,
+                        false,
+                    );
+                    if ty.qualifiers != TypeQualifiers::NONE
+                        || ty.nullability != Nullability::Unspecified
+                        || matches!(ty.kind, CTypeKind::Array { .. } | CTypeKind::Function(_))
+                    {
+                        return unsupported(
+                            UnsupportedTypeCategory::InvalidSpecifierCombination,
+                            self.text(specifier.span, "invalid _Atomic type specifier"),
+                        );
                     }
+                    ty.qualifiers.is_atomic = true;
                     return ty;
                 }
                 TypeSpecifier::TS18661Float(value) => {
@@ -370,10 +436,11 @@ impl<'a> TypeResolver<'a> {
                             self.text(specifier.span, "TS 18661 floating type"),
                         );
                     };
-                    return supported(CTypeKind::Floating(CFloatingType::Ts18661 {
-                        format,
-                        width,
-                    }));
+                    return partially_supported(
+                        CTypeKind::Floating(CFloatingType::Ts18661 { format, width }),
+                        "PARC-P1108",
+                        "target ABI layout for TS 18661 floating types is not represented",
+                    );
                 }
                 TypeSpecifier::Int128 => {
                     let signedness = if type_specs
@@ -384,10 +451,23 @@ impl<'a> TypeResolver<'a> {
                     } else {
                         Signedness::Signed
                     };
-                    return supported(CTypeKind::Integer(CIntegerType::Int128 { signedness }));
+                    let kind = CTypeKind::Integer(CIntegerType::Int128 { signedness });
+                    return if self.int128_supported {
+                        supported(kind)
+                    } else {
+                        unsupported_preserved(
+                            kind,
+                            "PARC-E1108",
+                            "target data model does not define an Int128 layout",
+                        )
+                    };
                 }
                 TypeSpecifier::Float128 => {
-                    return supported(CTypeKind::Floating(CFloatingType::Float128));
+                    return partially_supported(
+                        CTypeKind::Floating(CFloatingType::Float128),
+                        "PARC-P1108",
+                        "target ABI layout for Float128 is not represented",
+                    );
                 }
                 TypeSpecifier::BitInt(expression) => {
                     let width = match eval_const_expr(&expression.node) {
@@ -413,10 +493,11 @@ impl<'a> TypeResolver<'a> {
                     } else {
                         Signedness::Signed
                     };
-                    return supported(CTypeKind::Integer(CIntegerType::BitInt {
-                        signedness,
-                        width,
-                    }));
+                    return partially_supported(
+                        CTypeKind::Integer(CIntegerType::BitInt { signedness, width }),
+                        "PARC-P1107",
+                        "target ABI layout for _BitInt is not represented",
+                    );
                 }
                 _ => {}
             }
@@ -589,7 +670,7 @@ pub(crate) fn is_function_declarator(declarator: &Declarator) -> bool {
 
 fn declaration_qualifiers(
     specifiers: &[Node<DeclarationSpecifier>],
-) -> (TypeQualifiers, Nullability) {
+) -> (TypeQualifiers, Nullability, bool) {
     qualifier_values(
         specifiers
             .iter()
@@ -600,7 +681,9 @@ fn declaration_qualifiers(
     )
 }
 
-fn field_qualifiers(specifiers: &[Node<SpecifierQualifier>]) -> (TypeQualifiers, Nullability) {
+fn field_qualifiers(
+    specifiers: &[Node<SpecifierQualifier>],
+) -> (TypeQualifiers, Nullability, bool) {
     qualifier_values(
         specifiers
             .iter()
@@ -613,7 +696,7 @@ fn field_qualifiers(specifiers: &[Node<SpecifierQualifier>]) -> (TypeQualifiers,
 
 fn pointer_qualifiers(
     qualifiers: &[Node<PointerQualifier>],
-) -> (TypeQualifiers, Nullability, bool) {
+) -> (TypeQualifiers, Nullability, bool, bool) {
     let values = qualifier_values(qualifiers.iter().filter_map(
         |qualifier| match &qualifier.node {
             PointerQualifier::TypeQualifier(value) => Some(&value.node),
@@ -623,35 +706,57 @@ fn pointer_qualifiers(
     let has_extensions = qualifiers
         .iter()
         .any(|qualifier| matches!(qualifier.node, PointerQualifier::Extension(_)));
-    (values.0, values.1, has_extensions)
+    (values.0, values.1, has_extensions, values.2)
 }
 
 fn qualifier_values<'a>(
     qualifiers: impl Iterator<Item = &'a TypeQualifier>,
-) -> (TypeQualifiers, Nullability) {
+) -> (TypeQualifiers, Nullability, bool) {
     let mut result = TypeQualifiers::NONE;
     let mut nullability = Nullability::Unspecified;
+    let mut conflicting_nullability = false;
     for qualifier in qualifiers {
         match qualifier {
             TypeQualifier::Const => result.is_const = true,
             TypeQualifier::Volatile => result.is_volatile = true,
             TypeQualifier::Restrict => result.is_restrict = true,
             TypeQualifier::Atomic => result.is_atomic = true,
-            TypeQualifier::Nonnull => nullability = Nullability::Nonnull,
-            TypeQualifier::Nullable => nullability = Nullability::Nullable,
-            TypeQualifier::NullUnspecified => nullability = Nullability::NullUnspecified,
+            TypeQualifier::Nonnull => {
+                conflicting_nullability |=
+                    !matches!(nullability, Nullability::Unspecified | Nullability::Nonnull);
+                nullability = Nullability::Nonnull;
+            }
+            TypeQualifier::Nullable => {
+                conflicting_nullability |= !matches!(
+                    nullability,
+                    Nullability::Unspecified | Nullability::Nullable
+                );
+                nullability = Nullability::Nullable;
+            }
+            TypeQualifier::NullUnspecified => {
+                conflicting_nullability |= !matches!(
+                    nullability,
+                    Nullability::Unspecified | Nullability::NullUnspecified
+                );
+                nullability = Nullability::NullUnspecified;
+            }
         }
     }
-    (result, nullability)
+    (result, nullability, conflicting_nullability)
 }
 
-fn pointer(inner: CType, values: (TypeQualifiers, Nullability, bool)) -> CType {
-    let (qualifiers, nullability, has_extensions) = values;
+fn pointer(inner: CType, values: (TypeQualifiers, Nullability, bool, bool)) -> CType {
+    let (qualifiers, nullability, has_extensions, conflicting_nullability) = values;
     CType {
         qualifiers,
         nullability,
         kind: CTypeKind::Pointer(Box::new(inner)),
-        support: if has_extensions {
+        support: if conflicting_nullability {
+            SupportStatus::Unsupported {
+                code: code("PARC-E1109"),
+                reason: "pointer has conflicting nullability qualifiers".to_owned(),
+            }
+        } else if has_extensions {
             partial(
                 "PARC-P1102",
                 "pointer extension qualifiers require explicit downstream review",
@@ -669,7 +774,7 @@ fn array_type(
     array_qualifiers: &[Node<TypeQualifier>],
     parameter_context: bool,
 ) -> CType {
-    let (written_qualifiers, nullability) =
+    let (written_qualifiers, nullability, conflicting_nullability) =
         qualifier_values(array_qualifiers.iter().map(|qualifier| &qualifier.node));
     let parameter_qualifiers = if parameter_context {
         written_qualifiers
@@ -686,41 +791,81 @@ fn array_type(
         ),
         ArraySize::VariableExpression(expression) => {
             let spelling = span_text(source, expression.span, "array bound expression");
-            let bound = match eval_const_expr(&expression.node) {
+            let (bound, support) = match eval_const_expr(&expression.node) {
                 Some(value) if value > 0 => match u64::try_from(value) {
-                    Ok(elements) => ArrayBound::Fixed { elements },
-                    Err(_) => ArrayBound::Invalid {
+                    Ok(elements) => (ArrayBound::Fixed { elements }, SupportStatus::Supported),
+                    Err(_) => (
+                        ArrayBound::Invalid {
+                            spelling,
+                            diagnostic: code("PARC-E1103"),
+                        },
+                        SupportStatus::Unsupported {
+                            code: code("PARC-E1103"),
+                            reason: "array bound overflows the schema-v2 element range".to_owned(),
+                        },
+                    ),
+                },
+                Some(_) => (
+                    ArrayBound::Invalid {
                         spelling,
                         diagnostic: code("PARC-E1103"),
                     },
-                },
-                Some(_) => ArrayBound::Invalid {
-                    spelling,
-                    diagnostic: code("PARC-E1103"),
-                },
-                None => ArrayBound::Variable {
-                    normalized_expression: spelling,
-                },
+                    SupportStatus::Unsupported {
+                        code: code("PARC-E1103"),
+                        reason: "array bound must be strictly positive".to_owned(),
+                    },
+                ),
+                None => (
+                    ArrayBound::Variable {
+                        normalized_expression: spelling,
+                    },
+                    SupportStatus::Supported,
+                ),
             };
-            (bound, SupportStatus::Supported)
+            (bound, support)
         }
         ArraySize::StaticExpression(expression) if parameter_context => {
             let spelling = span_text(source, expression.span, "array bound expression");
-            let minimum = match eval_const_expr(&expression.node) {
+            let (bound, support) = match eval_const_expr(&expression.node) {
                 Some(value) if value > 0 => match u64::try_from(value) {
-                    Ok(elements) => ArrayMinimumBound::Fixed { elements },
-                    Err(_) => ArrayMinimumBound::Variable {
-                        normalized_expression: spelling,
+                    Ok(elements) => (
+                        ArrayBound::StaticMinimum {
+                            minimum: ArrayMinimumBound::Fixed { elements },
+                        },
+                        SupportStatus::Supported,
+                    ),
+                    Err(_) => (
+                        ArrayBound::Invalid {
+                            spelling,
+                            diagnostic: code("PARC-E1103"),
+                        },
+                        SupportStatus::Unsupported {
+                            code: code("PARC-E1103"),
+                            reason: "static array minimum overflows the schema-v2 element range"
+                                .to_owned(),
+                        },
+                    ),
+                },
+                Some(_) => (
+                    ArrayBound::Invalid {
+                        spelling,
+                        diagnostic: code("PARC-E1103"),
                     },
-                },
-                _ => ArrayMinimumBound::Variable {
-                    normalized_expression: spelling,
-                },
+                    SupportStatus::Unsupported {
+                        code: code("PARC-E1103"),
+                        reason: "static array minimum must be strictly positive".to_owned(),
+                    },
+                ),
+                None => (
+                    ArrayBound::StaticMinimum {
+                        minimum: ArrayMinimumBound::Variable {
+                            normalized_expression: spelling,
+                        },
+                    },
+                    SupportStatus::Supported,
+                ),
             };
-            (
-                ArrayBound::StaticMinimum { minimum },
-                SupportStatus::Supported,
-            )
+            (bound, support)
         }
         ArraySize::StaticExpression(expression) => (
             ArrayBound::Invalid {
@@ -733,7 +878,12 @@ fn array_type(
             },
         ),
     };
-    let support = if !parameter_context && !array_qualifiers.is_empty() {
+    let support = if conflicting_nullability {
+        SupportStatus::Unsupported {
+            code: code("PARC-E1109"),
+            reason: "array brackets have conflicting nullability qualifiers".to_owned(),
+        }
+    } else if !parameter_context && !array_qualifiers.is_empty() {
         SupportStatus::Unsupported {
             code: code("PARC-E1106"),
             reason: "array-bracket qualifiers are only valid on a parameter".to_owned(),
@@ -815,6 +965,27 @@ fn supported(kind: CTypeKind) -> CType {
         nullability: Nullability::Unspecified,
         kind,
         support: SupportStatus::Supported,
+    }
+}
+
+fn partially_supported(kind: CTypeKind, code_value: &str, reason: &str) -> CType {
+    CType {
+        qualifiers: TypeQualifiers::NONE,
+        nullability: Nullability::Unspecified,
+        kind,
+        support: partial(code_value, reason),
+    }
+}
+
+fn unsupported_preserved(kind: CTypeKind, code_value: &str, reason: &str) -> CType {
+    CType {
+        qualifiers: TypeQualifiers::NONE,
+        nullability: Nullability::Unspecified,
+        kind,
+        support: SupportStatus::Unsupported {
+            code: code(code_value),
+            reason: reason.to_owned(),
+        },
     }
 }
 

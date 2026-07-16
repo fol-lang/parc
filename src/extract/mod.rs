@@ -22,6 +22,7 @@ pub(crate) struct ExtractionContext<'a> {
     pub source: &'a str,
     pub generated_file: FileId,
     pub target: TargetFingerprint,
+    pub int128_supported: bool,
     pub default_visibility: Visibility,
 }
 
@@ -352,6 +353,7 @@ impl<'a> ContractExtractor<'a> {
                 &self.anonymous_tags,
                 &self.pointer_aliases,
                 self.context.source,
+                self.context.int128_supported,
             );
             let kind = if is_typedef {
                 SourceDeclarationKind::TypeAlias(SourceTypeAlias {
@@ -385,6 +387,7 @@ impl<'a> ContractExtractor<'a> {
             };
             self.set_kind(id, kind);
             self.apply_extension_support(id, &extensions);
+            self.apply_specifier_support(id, &declaration.specifiers);
         }
     }
 
@@ -419,6 +422,7 @@ impl<'a> ContractExtractor<'a> {
             &self.anonymous_tags,
             &self.pointer_aliases,
             self.context.source,
+            self.context.int128_supported,
         );
         let kind = self.lower_function_kind(
             &resolver,
@@ -429,6 +433,7 @@ impl<'a> ContractExtractor<'a> {
         );
         self.set_kind(id, kind);
         self.apply_extension_support(id, &extensions);
+        self.apply_specifier_support(id, &function.specifiers);
     }
 
     fn lower_function_kind(
@@ -469,8 +474,25 @@ impl<'a> ContractExtractor<'a> {
                     original: name.clone(),
                 });
                 let id = ChildId::parameter(parent, ordinal);
-                let support =
+                let lowered_attributes = attributes_from_extensions(
+                    self.context.source,
+                    self.context.generated_file,
+                    &parameter.extensions,
+                );
+                let mut support =
                     nested_type_support(&parameter.ty).unwrap_or(SupportStatus::Supported);
+                if lowered_attributes.invalid_span {
+                    support = unsupported_status(
+                        "PARC-E1210",
+                        "a parameter attribute had an invalid generated-source span",
+                    );
+                } else if has_unmodeled_extensions(&parameter.extensions) && support.is_supported()
+                {
+                    support = partial_status(
+                        "PARC-P1205",
+                        "parameter contains an unmodeled ABI-relevant attribute",
+                    );
+                }
                 Some(SourceParameter {
                     id,
                     ordinal,
@@ -478,7 +500,7 @@ impl<'a> ContractExtractor<'a> {
                     ty: parameter.ty,
                     range,
                     provenance: generated_provenance(),
-                    attributes: Vec::new(),
+                    attributes: lowered_attributes.attributes,
                     support,
                 })
             })
@@ -563,6 +585,7 @@ impl<'a> ContractExtractor<'a> {
                         &self.anonymous_tags,
                         &self.pointer_aliases,
                         self.context.source,
+                        self.context.int128_supported,
                     );
                     if field.node.declarators.is_empty() {
                         if let Some(value) = self.lower_field(
@@ -702,7 +725,38 @@ impl<'a> ContractExtractor<'a> {
             }
             None => None,
         };
-        let support = nested_type_support(&ty).unwrap_or(SupportStatus::Supported);
+        let extensions = field_extensions(specifiers, declarator.map(|value| &value.node));
+        let lowered_attributes = attributes_from_extensions(
+            self.context.source,
+            self.context.generated_file,
+            &extensions,
+        );
+        let mut support = nested_type_support(&ty).unwrap_or(SupportStatus::Supported);
+        if let Some(bit_width) = &bit_width {
+            support = match bit_width {
+                BitWidth::Invalid { .. } => unsupported_status(
+                    "PARC-E1207",
+                    "bit-field width is negative or overflows the schema-v2 range",
+                ),
+                BitWidth::Expression { .. } if support.is_supported() => partial_status(
+                    "PARC-P1207",
+                    "bit-field width could not be evaluated without guessing",
+                ),
+                BitWidth::Known { .. } => support,
+                BitWidth::Expression { .. } => support,
+            };
+        }
+        if lowered_attributes.invalid_span {
+            support = unsupported_status(
+                "PARC-E1210",
+                "a field attribute had an invalid generated-source span",
+            );
+        } else if has_unmodeled_extensions(&extensions) && support.is_supported() {
+            support = partial_status(
+                "PARC-P1205",
+                "field contains an unmodeled ABI-relevant attribute",
+            );
+        }
         Some(SourceField {
             id,
             name: source_name,
@@ -710,7 +764,7 @@ impl<'a> ContractExtractor<'a> {
             bit_width,
             range,
             provenance: generated_provenance(),
-            attributes: Vec::new(),
+            attributes: lowered_attributes.attributes,
             support,
             identity_tokens,
             duplicate_ordinal,
@@ -777,36 +831,40 @@ impl<'a> ContractExtractor<'a> {
                     },
                 };
                 previous_name = Some(name.normalized.clone());
+                let lowered_attributes = attributes_from_extensions(
+                    self.context.source,
+                    self.context.generated_file,
+                    &enumerator.node.extensions,
+                );
+                let mut support = if matches!(value, EnumValue::Unevaluated { .. }) {
+                    partial_status(
+                        "PARC-P1203",
+                        "enumerator value could not be evaluated without guessing",
+                    )
+                } else {
+                    SupportStatus::Supported
+                };
+                if lowered_attributes.invalid_span {
+                    support = unsupported_status(
+                        "PARC-E1210",
+                        "an enumerator attribute had an invalid generated-source span",
+                    );
+                } else if has_unmodeled_extensions(&enumerator.node.extensions)
+                    && support.is_supported()
+                {
+                    support = partial_status(
+                        "PARC-P1202",
+                        "enumerator has an unmodeled source attribute",
+                    );
+                }
                 Some(SourceEnumVariant {
                     id: variant_id,
                     name,
                     value,
                     range,
                     provenance: generated_provenance(),
-                    attributes: {
-                        let lowered = attributes_from_extensions(
-                            self.context.source,
-                            self.context.generated_file,
-                            &enumerator.node.extensions,
-                        );
-                        if lowered.invalid_span {
-                            self.diagnostics.push(self.diagnostic(
-                                "PARC-E1210",
-                                DiagnosticStage::Extract,
-                                Severity::Error,
-                                DiagnosticCompletenessImpact::ForcesRejected,
-                                "an enumerator attribute had an invalid generated-source span",
-                                Some(range),
-                                Some(id),
-                            ));
-                        }
-                        lowered.attributes
-                    },
-                    support: if has_unmodeled_extensions(&enumerator.node.extensions) {
-                        partial_status("PARC-P1202", "enumerator has an unmodeled source attribute")
-                    } else {
-                        SupportStatus::Supported
-                    },
+                    attributes: lowered_attributes.attributes,
+                    support,
                     identity_tokens: self.tokens(enumerator.span)?,
                     duplicate_ordinal: 0,
                 })
@@ -1063,6 +1121,37 @@ impl<'a> ContractExtractor<'a> {
         }
     }
 
+    fn apply_specifier_support(
+        &mut self,
+        id: DeclarationId,
+        specifiers: &[Node<DeclarationSpecifier>],
+    ) {
+        for specifier in specifiers {
+            let (code_value, message) = match &specifier.node {
+                DeclarationSpecifier::Alignment(_) => (
+                    "PARC-E1216",
+                    "explicit declaration alignment is ABI-relevant and not modeled",
+                ),
+                DeclarationSpecifier::Function(_) => (
+                    "PARC-E1217",
+                    "function specifier semantics are not modeled by source-contract lowering",
+                ),
+                _ => continue,
+            };
+            self.draft(id).support = unsupported_status(code_value, message);
+            let diagnostic = self.diagnostic(
+                code_value,
+                DiagnosticStage::Extract,
+                Severity::Error,
+                DiagnosticCompletenessImpact::ForcesRejected,
+                message,
+                self.range(specifier.span),
+                Some(id),
+            );
+            self.diagnostics.push(diagnostic);
+        }
+    }
+
     fn draft(&mut self, id: DeclarationId) -> &mut DeclarationDraft {
         let meta = self.metadata[&id].clone();
         self.drafts.entry(id).or_insert(DeclarationDraft {
@@ -1206,6 +1295,53 @@ impl<'a> ContractExtractor<'a> {
                 Some(id),
             );
             self.diagnostics.push(diagnostic);
+        }
+
+        let unsupported_statuses = self
+            .drafts
+            .iter()
+            .filter_map(|(id, draft)| {
+                let (code, reason, severity, impact) = match &draft.support {
+                    SupportStatus::Supported => return None,
+                    SupportStatus::Partial { code, reason } => (
+                        code.clone(),
+                        reason.clone(),
+                        Severity::Warning,
+                        DiagnosticCompletenessImpact::ForcesPartial,
+                    ),
+                    SupportStatus::Unsupported { code, reason } => (
+                        code.clone(),
+                        reason.clone(),
+                        Severity::Error,
+                        DiagnosticCompletenessImpact::ForcesRejected,
+                    ),
+                };
+                Some((
+                    *id,
+                    draft.occurrences.last().map(|occurrence| occurrence.range),
+                    code,
+                    reason,
+                    severity,
+                    impact,
+                ))
+            })
+            .collect::<Vec<_>>();
+        for (id, range, status_code, reason, severity, impact) in unsupported_statuses {
+            let already_reported = self.diagnostics.iter().any(|diagnostic| {
+                diagnostic.code == status_code && diagnostic.declaration == Some(id)
+            });
+            if !already_reported {
+                let diagnostic = self.diagnostic(
+                    status_code.as_str(),
+                    DiagnosticStage::Extract,
+                    severity,
+                    impact,
+                    reason,
+                    range,
+                    Some(id),
+                );
+                self.diagnostics.push(diagnostic);
+            }
         }
 
         let mut declarations = Vec::new();
@@ -1386,8 +1522,35 @@ fn declaration_extensions(
     extensions
 }
 
+fn field_extensions(
+    specifiers: &[Node<SpecifierQualifier>],
+    declarator: Option<&Declarator>,
+) -> Vec<Node<Extension>> {
+    let mut extensions = Vec::new();
+    for specifier in specifiers {
+        if let SpecifierQualifier::Extension(values) = &specifier.node {
+            extensions.extend(values.iter().cloned());
+        }
+    }
+    if let Some(declarator) = declarator {
+        collect_declarator_extensions(declarator, &mut extensions);
+    }
+    extensions
+}
+
 fn collect_declarator_extensions(declarator: &Declarator, output: &mut Vec<Node<Extension>>) {
     output.extend(declarator.extensions.iter().cloned());
+    for derived in &declarator.derived {
+        if let DerivedDeclarator::Pointer(qualifiers) | DerivedDeclarator::Block(qualifiers) =
+            &derived.node
+        {
+            for qualifier in qualifiers {
+                if let PointerQualifier::Extension(values) = &qualifier.node {
+                    output.extend(values.iter().cloned());
+                }
+            }
+        }
+    }
     if let DeclaratorKind::Declarator(inner) = &declarator.kind.node {
         collect_declarator_extensions(&inner.node, output);
     }
@@ -1685,10 +1848,11 @@ fn declaration_kind_support(kind: &SourceDeclarationKind) -> Option<SupportStatu
     match kind {
         SourceDeclarationKind::Function(function) => nested_type_support(&function.return_type)
             .or_else(|| {
-                function
-                    .parameters
-                    .iter()
-                    .find_map(|parameter| nested_type_support(&parameter.ty))
+                function.parameters.iter().find_map(|parameter| {
+                    (!parameter.support.is_supported())
+                        .then(|| parameter.support.clone())
+                        .or_else(|| nested_type_support(&parameter.ty))
+                })
             })
             .or_else(|| match &function.calling_convention {
                 CallingConvention::Unsupported { spelling } => Some(unsupported_status(
@@ -1697,14 +1861,21 @@ fn declaration_kind_support(kind: &SourceDeclarationKind) -> Option<SupportStatu
                 )),
                 _ => None,
             }),
-        SourceDeclarationKind::Record(record) => record
-            .fields
-            .iter()
-            .find_map(|field| nested_type_support(&field.ty)),
+        SourceDeclarationKind::Record(record) => record.fields.iter().find_map(|field| {
+            (!field.support.is_supported())
+                .then(|| field.support.clone())
+                .or_else(|| nested_type_support(&field.ty))
+        }),
         SourceDeclarationKind::Enum(enumeration) => enumeration
-            .explicit_underlying_type
-            .as_ref()
-            .and_then(nested_type_support),
+            .variants
+            .iter()
+            .find_map(|variant| (!variant.support.is_supported()).then(|| variant.support.clone()))
+            .or_else(|| {
+                enumeration
+                    .explicit_underlying_type
+                    .as_ref()
+                    .and_then(nested_type_support)
+            }),
         SourceDeclarationKind::TypeAlias(alias) => nested_type_support(&alias.target),
         SourceDeclarationKind::Variable(variable) => nested_type_support(&variable.ty),
         SourceDeclarationKind::Unsupported(unsupported) => Some(unsupported_status(

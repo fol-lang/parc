@@ -184,8 +184,9 @@ for (name, value) in &macros {
 
 This driver utility returns active preprocessing macros, including predefined
 target macros and macros from included headers. It is not the checked schema-v2
-macro inventory: current H1 scans emit an empty contract macro table and
-`PARC-P0001` until definition/expansion provenance can be proven.
+macro inventory. The traced built-in `scan_headers` path records effective
+macros with original definition and expansion provenance; external scans do not
+claim that evidence and carry `PARC-P0001`.
 
 ## Practical advice
 

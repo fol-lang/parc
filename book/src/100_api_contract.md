@@ -10,9 +10,9 @@ fingerprinted diagnostics stored in `SourcePackage`.
 ## Artifact surface
 
 `parc::contract` exposes checked target/source values, canonical codec
-functions, selections, and completion checks. `SourcePackage` is immutable;
-callers cannot supply a cached fingerprint or deserialize the domain model
-directly.
+functions, selections, checked `retain`/`merge`, and completion checks.
+`SourcePackage` is immutable; callers cannot supply a cached fingerprint or
+deserialize the domain model directly.
 
 ## Syntax surface
 
@@ -34,13 +34,15 @@ canonical wire DTOs are internal.
 ## Consumer rules
 
 1. Never guess a host target or compiler identity.
-2. Never merge unrelated entry headers into one scan translation unit.
+2. Never concatenate unrelated entry headers into one scan translation unit;
+   merge only checked packages with compatible target and source identity.
 3. Check `Completeness` and declaration `SupportStatus` before consumption.
 4. Treat ranges and provenance according to their recorded file and origin.
 5. Decode/encode artifacts only through the contract codec.
 6. Keep layout, symbol, link, and Rust-generation facts in downstream owners.
 7. Treat parser recovery and unsupported syntax as structured outcomes.
 
-H1 generated-source scans are intentionally partial. A future deeper
-provenance implementation may raise completeness only when every forcing gap is
-closed; callers must not special-case the current diagnostic away.
+Generated external-preprocessor scans are intentionally partial. Built-in scans
+may be complete only when their traced, bounded preprocessing and lowering emit
+no forcing gap. Callers must check the artifact rather than special-case a mode
+or diagnostic away.

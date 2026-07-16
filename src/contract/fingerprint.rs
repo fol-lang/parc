@@ -136,4 +136,10 @@ impl ContentFingerprint {
     pub fn from_content(content: &[u8]) -> Self {
         Self::derive(content)
     }
+
+    pub(crate) fn from_reader(reader: impl std::io::Read, length: u64) -> std::io::Result<Self> {
+        let mut hasher = CanonicalHasher::new("follang.parc.content-fingerprint.v1");
+        hasher.field_reader(length, reader)?;
+        Ok(Self(Digest32::new(hasher.finish())))
+    }
 }

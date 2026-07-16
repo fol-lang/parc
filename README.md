@@ -46,11 +46,18 @@ println!("declarations: {}", report.package().declarations().len());
 println!("diagnostics: {}", report.diagnostics().len());
 ```
 
-H1 records exact byte ranges in a generated preprocessed `SourceFile`. Original
-include and macro-expansion provenance is not yet provable, so every current
-scan is honestly `Completeness::Partial` and `ScanReport::into_complete` fails.
+The bounded built-in path records original ranges, transitive content-addressed
+files, effective macros, include chains, and macro-expansion provenance. It may
+produce `Completeness::Complete` when every construct is modeled. Unsupported
+preprocessor behavior, parser recovery, exact-type gaps, and exhausted budgets
+produce structured forcing diagnostics instead of guessed data. External
+preprocessing remains explicitly `Partial` with `PARC-P0001` because compiler
+output alone cannot prove original source and macro provenance.
+
 Multiple entry headers must be scanned independently; they are never
-concatenated into one translation unit.
+concatenated into one translation unit. Checked packages with identical target
+and preprocessing identity can be projected with `SourcePackage::retain` and
+combined with `SourcePackage::merge`.
 
 ## Ownership
 

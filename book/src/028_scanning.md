@@ -23,7 +23,7 @@ All source paths are absolute operational paths covered by canonical mapping
 rules. Physical roots are excluded from identity; logical paths and the mapping
 fingerprint are included. Duplicate or overlapping roots are rejected.
 
-H1 accepts exactly one entry header. Scan separate translation units
+Each scan accepts exactly one entry header. Scan separate translation units
 independently so their typedef and file-scope namespaces cannot leak or collide.
 
 ## Environment policy
@@ -43,14 +43,23 @@ starts from `env_clear()`.
 Both modes honor C11 and C17 target standards. Define and undefine events are
 validated before they can become argv.
 
-## Result and current completeness
+`ScanLimits` may tighten, but never raise, the production ceilings for input
+bytes, include recursion/count, macro work and nesting depth, tokens, generated
+output, external output, and external runtime. Hitting a ceiling is a named
+forcing diagnostic or a bounded `ScanError` when no truthful truncated artifact
+can be built.
+
+## Result and completeness
 
 `scan_headers` returns a `ScanReport`; diagnostics live only in its immutable
-package. Current declarations use exact ranges in a generated preprocessed
-`SourceFile` with `SourceOrigin::Generated`. Because original include and macro
-provenance is not yet proven, `PARC-P0001` forces every H1 scan to
-`Completeness::Partial`. Macros and transitive include content are not claimed
-as complete under that state.
+package. The traced built-in path remaps declaration, child, attribute,
+diagnostic, and recovery ranges to original logical files. It also populates
+transitive files, effective macros, include provenance, and macro expansions.
+Any unmappable range fails closed with `PARC-P2000`; it cannot silently become
+complete. A fully modeled built-in translation unit may therefore be
+`Completeness::Complete`.
 
-Operational setup errors return `ScanError`. Parser recovery is structured and
-becomes a forcing diagnostic with the skipped generated-source range.
+External declarations remain attached to a generated file and `PARC-P0001`
+forces `Partial`, because original provenance cannot be recovered from compiler
+text alone. Operational setup errors return `ScanError`. Parser recovery is
+structured and always has a forcing completeness effect.
