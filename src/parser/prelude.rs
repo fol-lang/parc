@@ -25,6 +25,20 @@ pub struct ParseError {
     pub expected: ::std::collections::HashSet<&'static str>,
 }
 pub type ParseResult<T> = Result<T, ParseError>;
+
+/// One syntax error recovered while parsing a translation unit.
+#[derive(PartialEq, Debug, Clone)]
+pub struct RecoveryError {
+    pub error: ParseError,
+    pub skipped: Span,
+}
+
+/// Recovered translation unit plus every syntax error and skipped range.
+#[derive(PartialEq, Debug, Clone)]
+pub struct RecoveredTranslationUnit {
+    pub unit: TranslationUnit,
+    pub errors: Vec<RecoveryError>,
+}
 impl ::std::fmt::Display for ParseError {
     fn fmt(&self, fmt: &mut ::std::fmt::Formatter) -> ::std::result::Result<(), ::std::fmt::Error> {
         r#try!(write!(fmt, "error at {}:{}: expected ", self.line, self.column));

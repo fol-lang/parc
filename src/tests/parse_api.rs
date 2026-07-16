@@ -40,15 +40,31 @@ fn parse_api_resilient_recovers_from_invalid_declaration() {
     // Strict parse should fail
     assert!(parse::translation_unit(input, Flavor::StdC11).is_err());
     // Resilient parse should recover
-    let tu = parse::translation_unit_resilient(input, Flavor::StdC11);
-    assert_eq!(tu.0.len(), 2, "expected 2 declarations, got {}", tu.0.len());
+    let recovered = parse::translation_unit_resilient(input, Flavor::StdC11);
+    assert_eq!(
+        recovered.unit.0.len(),
+        2,
+        "expected 2 declarations, got {}",
+        recovered.unit.0.len()
+    );
+    assert_eq!(recovered.errors.len(), 1);
+    let skipped = recovered.errors[0].skipped;
+    assert_eq!(&input[skipped.start..skipped.end], "@@@invalid@@@;");
+    assert!(recovered.errors[0].error.offset >= skipped.start);
+    assert!(recovered.errors[0].error.offset <= skipped.end);
 }
 
 #[test]
 fn parse_api_resilient_returns_all_when_valid() {
     let input = "int x;\nint y;\nint z;\n";
-    let tu = parse::translation_unit_resilient(input, Flavor::StdC11);
-    assert_eq!(tu.0.len(), 3, "expected 3 declarations, got {}", tu.0.len());
+    let recovered = parse::translation_unit_resilient(input, Flavor::StdC11);
+    assert_eq!(
+        recovered.unit.0.len(),
+        3,
+        "expected 3 declarations, got {}",
+        recovered.unit.0.len()
+    );
+    assert!(recovered.errors.is_empty());
 }
 
 #[test]

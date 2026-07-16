@@ -5,7 +5,7 @@
 - [Common Workflows](./015_workflows.md)
 - [Driver API](./020_driver.md)
 - [Built-in Preprocessor](./025_preprocessor.md)
-- [Source IR](./026_source_ir.md)
+- [Source Contract](./026_source_ir.md)
 - [Extraction](./027_extraction.md)
 - [Header Scanning](./028_scanning.md)
 - [Parser API](./030_parser.md)

@@ -88,19 +88,26 @@ pub fn translation_unit<'input>(__input: &'input str, env: &mut Env) -> ParseRes
     Err(ParseError { line: __line, column: __col, offset: __state.max_err_pos, expected: __state.expected })
 }
 
-pub fn translation_unit_resilient<'input>(__input: &'input str, env: &mut Env) -> TranslationUnit {
+pub fn translation_unit_resilient<'input>(__input: &'input str, env: &mut Env) -> RecoveredTranslationUnit {
     #![allow(non_snake_case, unused)]
+    let __initial_env = env.clone();
     // Try strict parse first
     let mut __state = ParseState::new();
     match __parse_translation_unit(__input, &mut __state, 0, env) {
         Matched(__pos, __value) if __pos == __input.len() => {
-            return __value;
+            return RecoveredTranslationUnit {
+                unit: __value,
+                errors: Vec::new(),
+            };
         }
         _ => {}
     }
 
+    *env = __initial_env;
+
     // Strict parse failed — use recovery loop
     let mut items: Vec<Node<ExternalDeclaration>> = Vec::new();
+    let mut errors: Vec<RecoveryError> = Vec::new();
     let mut pos = 0usize;
 
     // Skip leading whitespace/directives
@@ -127,9 +134,21 @@ pub fn translation_unit_resilient<'input>(__input: &'input str, env: &mut Env) -
                 }
             }
             Failed => {
+                let error_offset = __state.max_err_pos.max(pos).min(__input.len());
+                let (line, column) = pos_to_line(__input, error_offset);
+                let error = ParseError {
+                    line,
+                    column,
+                    offset: error_offset,
+                    expected: __state.expected,
+                };
                 // Skip to next sync point
                 match __skip_to_sync_point(__input, pos) {
                     Some(new_pos) => {
+                        errors.push(RecoveryError {
+                            error,
+                            skipped: Span::span(pos, new_pos),
+                        });
                         pos = new_pos;
                         // Skip whitespace after sync point
                         let mut __state2 = ParseState::new();
@@ -138,13 +157,22 @@ pub fn translation_unit_resilient<'input>(__input: &'input str, env: &mut Env) -
                             _ => {}
                         }
                     }
-                    None => break,
+                    None => {
+                        errors.push(RecoveryError {
+                            error,
+                            skipped: Span::span(pos, __input.len()),
+                        });
+                        break;
+                    }
                 }
             }
         }
     }
 
-    TranslationUnit(items)
+    RecoveredTranslationUnit {
+        unit: TranslationUnit(items),
+        errors,
+    }
 }
 
 fn __skip_to_sync_point(input: &str, pos: usize) -> Option<usize> {

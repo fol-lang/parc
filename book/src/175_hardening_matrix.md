@@ -1,98 +1,49 @@
 # Hardening Matrix
 
-This chapter translates the large PARC test surface into an explicit hardening
-ladder.
+Confidence is separated by evidence type. A parser fixture cannot prove a
+checked source contract, and a generated-source scan cannot prove original
+macro provenance.
 
-The important point is not "how many tests exist". The important point is which
-surfaces are carrying confidence for real-header parsing, preprocessing, and
-source extraction.
+## Required hermetic evidence
 
-## How To Read The Matrix
+| Surface | Evidence |
+| --- | --- |
+| Frozen contract corpus | Canonical schema-v2 bytes, IDs, target/source fingerprints, decoder and validation invariants |
+| Scan-contract tests | Explicit target/path/environment configuration, two-pass lowering, ranges, diagnostics, relocation, and recovery |
+| Parser API and reftests | Grammar, AST, visitor, and printer behavior |
+| Package test | Published archive plus a clean downstream consumer |
 
-Read each surface on three axes:
+`make test-contract` is the focused contract lane. `make test` adds repository
+fixtures and doctests. Neither may rely on ambient C include variables.
 
-- hermetic or host-dependent
-- parser-only versus scan-first
-- success path versus conservative failure path
+## Required system evidence
 
-A surface is stronger when it is:
+System-dependent filters must select at least one test. The Make helper fails a
+zero-test filter so a rename cannot silently greenwash the lane.
 
-- hermetic
-- scan-first
-- repeated deterministically
-- tied to a realistic system or library family
+Current required system evidence covers:
 
-## Hermetic Regression Baselines
+- the GCC enum-representation preservation corpus;
+- external-fixture refresh metadata;
+- the manifest-driven full-app system runner.
 
-These are the first surfaces that should stay green on every machine:
+This evidence is compiler/fixture specific. It is not a claim of arbitrary
+OpenSSL, libcurl, libc, SDK, or host-header support.
 
-- vendored musl `stdint`
-- vendored zlib
-- vendored libpng builtin-preprocessor success path
-- repo-owned `macro_env_a` hostile macro corpus
-- repo-owned `type_env_b` hostile type corpus
-- parser and extraction corpus fixtures under `src/tests/**`
+## Conservative-failure evidence
 
-These matter because they exercise:
+Hardening tests also prove that PARC reports uncertainty:
 
-- multi-header scanning
-- macro and include handling
-- extraction into `SourcePackage`
-- deterministic behavior without relying on the host toolchain layout
+- generated provenance forces `PARC-P0001` and partial completeness;
+- structured parser recovery retains skipped ranges;
+- malformed visibility and conflicting calling conventions reject;
+- unknown ABI-relevant attributes preserve spelling and force partial;
+- invalid or unrepresentable declarations are not assigned guessed IDs,
+  values, or placeholder spellings.
 
-## Host-Dependent Regression Ladders
+## Interpretation
 
-These should stay green on developer and CI hosts where the headers exist, but
-they are not the first portability baseline:
-
-- OpenSSL public wrapper extraction
-- combined Linux event-loop wrapper extraction
-- larger libc and system-header clusters
-
-These surfaces matter because they are closer to the "real ugly header world"
-target than the small synthetic fixtures.
-
-## Tier 3: Hostile And Conservative-Failure Surfaces
-
-These prove that PARC is refusing or degrading honestly instead of pretending to
-understand everything:
-
-- hostile declaration fixtures
-- repo-owned hostile corpora that force builtin-preprocessor macro and typedef expansion
-- recovery fixtures
-- unsupported or partial declaration families that still emit diagnostics and
-  partial metadata
-- extraction-status summaries that distinguish supported, partial, and
-  unsupported output trust
-
-For hardening purposes, these failures are useful when they are:
-
-- deterministic
-- diagnostic
-- documented
-
-## Determinism Anchors
-
-The most important repeat-run anchors right now are:
-
-- vendored musl scan
-- vendored zlib scan
-- vendored libpng scan
-- `macro_env_a` scan
-- `type_env_b` scan
-- OpenSSL wrapper extraction
-- combined Linux event-loop wrapper extraction
-
-If any of those become unstable, confidence in the current baseline should
-drop immediately.
-
-## What This Matrix Does Not Mean
-
-This matrix does not mean:
-
-- every random system library now parses perfectly
-- every preprocessor corner is solved
-- every large host-dependent surface is equally mature
-
-It means the current test-evidence ladder is explicit instead of implied. It
-does not complete H1 through H5 or certify any platform.
+A green H1 matrix means the schema, checked construction, deterministic
+single-translation-unit scan, and stated parser fixtures hold. It does not mean
+complete preprocessing, macro inventory, layout proof, or whole-toolchain
+production certification.

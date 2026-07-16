@@ -14,7 +14,7 @@ $(info Project: $(PROJECT_NAME))
 $(info Version: $(CURRENT_VERSION))
 $(info ------------------------------------------)
 
-.PHONY: build b compile c fmt fmt-check lint lint-fix check-features test t test-contract test-package test-system docs-check verify help h clean docs release
+.PHONY: build b compile c fmt fmt-check lint lint-fix check-features test t test-contract test-contract-system test-package test-system docs-check verify help h clean docs release
 
 SHELL := /bin/bash
 
@@ -56,17 +56,18 @@ check-features:
 test-contract:
 	@CPATH= C_INCLUDE_PATH= cargo test --lib contract
 
+test-contract-system:
+	@PARC_SYSTEM_TEST_MODE="$(SYSTEM_TEST_MODE)" bash tools/run-filtered-test.sh cargo test --lib --features system-tests contract_preservation_gcc_enum_representation -- --nocapture
+
 test-package:
 	@CPATH= C_INCLUDE_PATH= tools/test-package.sh follang-parc parc
 
 SYSTEM_TEST_MODE ?= optional
 
 test-system:
-	@PARC_SYSTEM_TEST_MODE="$(SYSTEM_TEST_MODE)" cargo test --lib --features system-tests system_headers -- --nocapture
-	@PARC_SYSTEM_TEST_MODE="$(SYSTEM_TEST_MODE)" cargo test --lib --features system-tests refresh_script_ -- --nocapture
-	@PARC_SYSTEM_TEST_MODE="$(SYSTEM_TEST_MODE)" cargo test --lib --features system-tests full_app_main -- --nocapture
-	@CPATH= C_INCLUDE_PATH= PARC_SYSTEM_TEST_MODE="$(SYSTEM_TEST_MODE)" cargo test --lib --features system-tests external_preprocessors -- --nocapture
-	@PARC_SYSTEM_TEST_MODE="$(SYSTEM_TEST_MODE)" cargo test --lib --features system-tests scan_builtin_vs_gcc_stdint_types -- --nocapture
+	@$(MAKE) test-contract-system SYSTEM_TEST_MODE="$(SYSTEM_TEST_MODE)"
+	@PARC_SYSTEM_TEST_MODE="$(SYSTEM_TEST_MODE)" bash tools/run-filtered-test.sh cargo test --lib --features system-tests refresh_script_ -- --nocapture
+	@PARC_SYSTEM_TEST_MODE="$(SYSTEM_TEST_MODE)" bash tools/run-filtered-test.sh cargo test --lib --features system-tests full_app_main -- --nocapture
 
 docs-check:
 	@command -v mdbook >/dev/null 2>&1 || { echo "mdbook is required"; exit 1; }
@@ -111,6 +112,7 @@ help:
 	@echo "  check-features  Check default, all, and no-default features"
 	@echo "  test         Run tests"
 	@echo "  test-contract  Run contract tests"
+	@echo "  test-contract-system  Verify compiler-dependent contract evidence"
 	@echo "  test-package   Test the package archive and clean consumer"
 	@echo "  test-system    Run prerequisite-dependent system tests"
 	@echo "  docs-check     Build Rust and mdBook documentation"

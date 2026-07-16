@@ -7,7 +7,13 @@ rust-version = "1.89"
 license = "MIT/Apache-2.0"
 description = "C language frontend: preprocessing, parsing, and source-level semantic extraction"
 readme = "README.md"
-include = ["/src/**/*.rs", "/Cargo.toml", "/LICENSE-*", "/README.md"]
+include = [
+    "/src/**/*.rs",
+    "/contract-corpus/**",
+    "/Cargo.toml",
+    "/LICENSE-*",
+    "/README.md",
+]
 documentation = "https://docs.rs/follang-parc"
 homepage = "https://github.com/follang/lang-c"
 repository = "https://github.com/follang/lang-c"
@@ -18,10 +24,11 @@ categories = [ "parser-implementations" ]
 name = "parc"
 
 [dependencies]
+blake3 = "1"
 serde = { version = "1", features = ["derive"] }
-
-[dev-dependencies]
-serde_json = "=1.0.145"
+serde_json = { version = "=1.0.145", features = ["raw_value"] }
+thiserror = "2"
+unicode-normalization = "0.1"
 
 [features]
 dev-pegviz = [] # tests only: emit extra output for pegviz

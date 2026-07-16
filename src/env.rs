@@ -10,6 +10,7 @@ pub enum Symbol {
     Identifier,
 }
 
+#[derive(Clone)]
 pub struct Env {
     pub symbols: Vec<HashMap<String, Symbol>>,
     pub extensions_gnu: bool,

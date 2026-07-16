@@ -156,17 +156,11 @@ impl IncludeResolver {
     ) -> PreprocessResult {
         let tokens = Lexer::tokenize(source);
 
-        // Use a raw pointer to self to work around the borrow checker.
-        // This is safe because the include_handler closure only borrows
-        // fields of self that processor.process_with_includes doesn't touch.
-        let self_ptr = self as *mut IncludeResolver;
-
         let mut all_errors = Vec::new();
         let mut all_warnings = Vec::new();
 
         let output = processor.process_with_includes(&tokens, &mut |path, system, macros| {
-            let resolver = unsafe { &mut *self_ptr };
-            resolver.handle_include(path, system, macros, &mut all_errors, &mut all_warnings)
+            self.handle_include(path, system, macros, &mut all_errors, &mut all_warnings)
         });
 
         all_errors.extend(output.errors);
@@ -255,10 +249,8 @@ impl IncludeResolver {
         let tokens = Lexer::tokenize(&source);
 
         let mut sub_proc = Processor::with_macros(std::mem::take(macros));
-        let self_ptr = self as *mut IncludeResolver;
         let output = sub_proc.process_with_includes(&tokens, &mut |p, s, m| {
-            let resolver = unsafe { &mut *self_ptr };
-            resolver.handle_include(p, s, m, errors, warnings)
+            self.handle_include(p, s, m, errors, warnings)
         });
 
         *macros = std::mem::take(sub_proc.macros_mut());
@@ -297,10 +289,8 @@ impl IncludeResolver {
         let tokens = Lexer::tokenize(source);
 
         let mut sub_proc = Processor::with_macros(std::mem::take(macros));
-        let self_ptr = self as *mut IncludeResolver;
         let output = sub_proc.process_with_includes(&tokens, &mut |p, s, m| {
-            let resolver = unsafe { &mut *self_ptr };
-            resolver.handle_include(p, s, m, errors, warnings)
+            self.handle_include(p, s, m, errors, warnings)
         });
 
         *macros = std::mem::take(sub_proc.macros_mut());

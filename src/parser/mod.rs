@@ -6,6 +6,7 @@
 // generated output byte-stable and lint the handwritten parser API around it.
 #![allow(
     clippy::blocks_in_conditions,
+    clippy::collapsible_match,
     clippy::flat_map_identity,
     clippy::len_zero,
     clippy::needless_lifetimes,

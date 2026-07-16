@@ -1,95 +1,43 @@
-# Source IR
+# Source Contract
 
-The `parc::ir` module defines the durable intermediate representation produced
-by the PARC frontend. It is the primary contract between the parser/extractor
-and downstream consumers (LINC, GERC).
+`parc::contract` is the parser-independent schema-v2 boundary. Its domain model
+is immutable and cannot be deserialized or patched directly.
 
-## Design Principles
+## Main values
 
-- **Smaller than the AST**: only normalized declarations, not the full syntax tree
-- **Serializable**: all types derive `serde::Serialize` and `serde::Deserialize`
-- **Parser-agnostic**: downstream consumers should depend on `parc::ir`, not `parc::ast`
-- **No link/binary concerns**: no ABI probing, no library paths, no symbol validation
+- `TargetSpec` records checked compiler, target, language, extension, C
+  data-model, sysroot, and ordered ABI-argument facts.
+- `SourcePackage` contains files, effective source inputs, declarations,
+  macros, diagnostics, completeness, and a derived source fingerprint.
+- `SourceDeclaration` represents functions, records, enums, aliases,
+  variables, and explicitly unsupported declarations.
+- `CType` preserves source type structure, qualifiers, nullability, references,
+  arrays, function types, and support state.
+- `SourceRange` always refers to a file in the package table.
 
-## Key Types
+Measured record layout, field offsets, enum representation, symbols, and link
+facts are deliberately absent.
 
-### `SourcePackage`
+## Checked construction and decoding
 
-The top-level container:
+`SourcePackage::try_new` validates all cross-references and canonical ordering
+before deriving the package fingerprint. Normal consumers receive a package
+from `scan_headers` or decode a canonical envelope:
 
-```rust
-use parc::ir::SourcePackage;
+```rust,ignore
+use parc::contract::{decode_source_package, encode_source_package};
 
-let pkg = SourcePackage::new();
-assert!(pkg.is_empty());
+let package = decode_source_package(bytes)?;
+let canonical = encode_source_package(&package)?;
 ```
 
-### `SourceType`
+The domain type does not implement `Deserialize`. The decoder validates schema
+identity, target identity, IDs, ranges, provenance, completeness, and the
+stored fingerprint.
 
-Represents C types at source level:
+## Completeness
 
-```text
-Void, Bool, Char, SChar, UChar, Short, UShort,
-Int, UInt, Long, ULong, LongLong, ULongLong,
-Float, Double, LongDouble, Int128, UInt128,
-Pointer, Array, Qualified, FunctionPointer,
-TypedefRef, RecordRef, EnumRef, Opaque
-```
-
-### `SourceItem`
-
-One extracted declaration:
-
-- `Function` — function declaration with name, parameters, return type, calling convention
-- `Record` — struct/union with optional fields
-- `Enum` — enum with named variants and optional values
-- `TypeAlias` — typedef declaration
-- `Variable` — extern variable declaration
-- `Unsupported` — placeholder for unrepresentable declarations
-
-### `SourceMacro`
-
-Captured preprocessor macro with form (object-like/function-like), kind, and optional parsed value.
-
-### `SourceDiagnostic`
-
-Frontend diagnostic with kind, severity, message, optional location, and optional item name.
-
-### Provenance
-
-- `SourceOrigin` — where a declaration came from (Entry, UserInclude, System, Unknown)
-- `DeclarationProvenance` — per-item provenance metadata
-- `MacroProvenance` — per-macro provenance metadata
-- `SourceTarget` — compiler/target identity
-- `SourceInputs` — entry headers, include dirs, defines
-
-## JSON Serialization
-
-All IR types support JSON roundtrip:
-
-```rust
-use parc::ir::SourcePackage;
-
-let pkg = SourcePackage::new();
-let json = serde_json::to_string_pretty(&pkg).unwrap();
-let back: SourcePackage = serde_json::from_str(&json).unwrap();
-assert_eq!(pkg, back);
-```
-
-## Querying
-
-`SourcePackage` provides typed accessors:
-
-```rust
-// pkg.functions()      -> Iterator<Item = &SourceFunction>
-// pkg.records()        -> Iterator<Item = &SourceRecord>
-// pkg.enums()          -> Iterator<Item = &SourceEnum>
-// pkg.type_aliases()   -> Iterator<Item = &SourceTypeAlias>
-// pkg.variables()      -> Iterator<Item = &SourceVariable>
-// pkg.unsupported_items() -> ...
-// pkg.find_function("malloc")
-// pkg.find_record("point")
-// pkg.find_enum("color")
-// pkg.find_type_alias("size_t")
-// pkg.find_variable("errno")
-```
+`Completeness` is `Complete`, `Partial`, or `Rejected`. A partial or rejected
+package carries exact reasons derived from forcing diagnostics. Use
+`SourcePackage::into_complete` (or `ScanReport::into_complete`) with a
+`Selection`; never infer completeness from an empty error list.

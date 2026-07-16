@@ -2,6 +2,26 @@
 
 This chapter ties the public modules together into practical usage patterns.
 
+## Workflow 0: Produce The Checked Source Contract
+
+```rust,ignore
+use parc::scan::{
+    scan_headers, PathMapping, PathMappingRule, PreprocessorMode, ScanConfig,
+};
+
+let mapping = PathMapping::try_new([
+    PathMappingRule::try_new("/absolute/project", "project")?,
+])?;
+let config = ScanConfig::new(checked_target, mapping, PreprocessorMode::Builtin)?
+    .entry_header("/absolute/project/include/demo.h");
+let report = scan_headers(&config)?;
+let package = report.package();
+```
+
+Use this path when another stage needs a `SourcePackage`. Check completeness
+before consuming declarations; current generated-source scans are partial.
+The remaining workflows are syntax-oriented and do not construct a contract.
+
 ## Workflow 1: Parse A Real C File
 
 ```rust

@@ -1,0 +1,147 @@
+{
+  "cases": [
+    {
+      "artifact": "source-complete.json",
+      "expected_completeness": "complete",
+      "name": "complete",
+      "source_fingerprint": "psource2_a6fe4080b7e1a323cc1c5cf0fca625ed5df0747a745ebbedd0b457d96f201035"
+    },
+    {
+      "artifact": "source-partial.json",
+      "expected_completeness": "partial",
+      "name": "partial",
+      "source_fingerprint": "psource2_fb42eec49099a7597a1b385e7a7f2d13d165ee15dc8dfae97da481e6a32fefa5"
+    }
+  ],
+  "id_golden_vectors": "id-golden-vectors.json",
+  "linc_evidence_seed": {
+    "abi_probe": {
+      "abi": "sysv64",
+      "bitness": 64,
+      "crt_flavor": "glibc",
+      "endian": "little",
+      "linker_flavor": "gnu",
+      "machine": "x86_64",
+      "object_format": "elf"
+    },
+    "enum_representations": [
+      {
+        "alignment_bits": 32,
+        "declaration": "pdecl1_efa4c3e08588aadceced27ba10c722fc59563b99397009d83e59edea080ca726",
+        "signedness": "unsigned",
+        "storage_bits": 32
+      }
+    ],
+    "ordered_link_inputs": [
+      "libfirst.a",
+      "librepeat.a",
+      "libmiddle.so",
+      "librepeat.a"
+    ],
+    "ownership": "measured ABI and link evidence; not part of PARC SourcePackage",
+    "providers": [
+      {
+        "declaration": "pdecl1_524bcccd395cfaad5d0697f01bc545663e82eaad03be1e515beeb81933f5b37d",
+        "provider": "libparc_fixture.a",
+        "state": "resolved",
+        "symbol": "parc_open"
+      },
+      {
+        "declaration": "pdecl1_5bb12dee80f362f940d26aa0ab9d6fd8f448e7ad0bcd8d403240afc507f888d5",
+        "state": "unresolved",
+        "symbol": "parc_missing"
+      }
+    ],
+    "record_layouts": [
+      {
+        "alignment_bits": 32,
+        "declaration": "pdecl1_b81fc55bc5e16f7145cee441d41748a09a5e93c3ae37cc0d36d530034a05e6c5",
+        "fields": [
+          {
+            "child": "pchild1_bfa44092d0be6eea67909c48826f9453fed7d751e3fd6f6462294ba42b0711de",
+            "offset_bits": 0,
+            "size_bits": 32
+          }
+        ],
+        "size_bits": 32
+      }
+    ],
+    "source_fingerprint": "psource2_a6fe4080b7e1a323cc1c5cf0fca625ed5df0747a745ebbedd0b457d96f201035"
+  },
+  "parc_preservation": [
+    {
+      "declaration": "pdecl1_524bcccd395cfaad5d0697f01bc545663e82eaad03be1e515beeb81933f5b37d",
+      "expected": "win64",
+      "fact": "non_c_calling_convention",
+      "path": "kind.function.calling_convention"
+    },
+    {
+      "declaration": "pdecl1_e1aa560084aa2b17941ce5f7d3ce72cf86cb6fcc38919e74579b59cd2ee8f103",
+      "expected": {
+        "pointee": [
+          "const",
+          "volatile"
+        ],
+        "pointer": []
+      },
+      "fact": "alias_pointer_and_pointee_qualifiers",
+      "path": "kind.type_alias.target"
+    },
+    {
+      "child": "pchild1_4242739371f49823aa225339e1602ee19a6d39850ee4c014d9ee239f360a751a",
+      "declaration": "pdecl1_524bcccd395cfaad5d0697f01bc545663e82eaad03be1e515beeb81933f5b37d",
+      "expected": {
+        "nullability": "nonnull",
+        "pointer": [
+          "restrict"
+        ]
+      },
+      "fact": "parameter_alias_qualifiers_and_nullability",
+      "path": "kind.function.parameters[0].ty"
+    },
+    {
+      "artifact": "source-partial.json",
+      "declaration": "pdecl1_5022130dcb7676ccf3e69799191b447658bb18bbd39af4a5678179b5828e1bb8",
+      "diagnostic": "PARC-E4100",
+      "expected": "explicit_unsupported",
+      "fact": "int128_and_extended_float_rejection"
+    },
+    {
+      "expected": "ptarget1_b5558b1e4776d5eff233fcfbea32b0068cd5c8f83bacdceaf3f406cc6c9dc4b2",
+      "fact": "target_identity"
+    },
+    {
+      "declaration": "pdecl1_e1aa560084aa2b17941ce5f7d3ce72cf86cb6fcc38919e74579b59cd2ee8f103",
+      "fact": "alias_resolution",
+      "target_declaration": "pdecl1_c6a46046a2d506232347136477eca68a6101e249571509f32da2d27491e991b0"
+    },
+    {
+      "expected": {
+        "category": "abi_affecting",
+        "value": {
+          "sign": "signed",
+          "value": "7"
+        }
+      },
+      "fact": "macro_category_and_value",
+      "macro": "pmacro1_e13cc1b65a00d41a70840dbf6bc11d378ce7ea744f7be72049905b33e54f101a"
+    },
+    {
+      "artifact": "source-partial.json",
+      "code": "PARC-E4100",
+      "expected_completeness_impact": "forces_partial",
+      "fact": "partial_source_diagnostic"
+    },
+    {
+      "expected": "all downstream-referenced declarations and children carry exact FileId ranges and SourceProvenance",
+      "fact": "locations_and_provenance"
+    }
+  ],
+  "schema": "follang.h1.preservation-ledger",
+  "source_schema": {
+    "id": "follang.parc.source-package",
+    "version": 2
+  },
+  "target_fingerprint": "ptarget1_b5558b1e4776d5eff233fcfbea32b0068cd5c8f83bacdceaf3f406cc6c9dc4b2",
+  "version": 1
+}

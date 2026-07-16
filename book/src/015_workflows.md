@@ -20,20 +20,27 @@ Read the workflows in this order:
 | Walk an AST you already parsed | `visit` |
 | Print an AST for debugging | `print::Printer` |
 
-## Scan headers into source IR
+## Scan headers into the source contract
 
 Use this when your real target is the PARC source contract rather than the raw
 syntax tree.
 
 ```rust
-use parc::scan::{scan_headers, ScanConfig};
+use parc::scan::{
+    scan_headers, PathMapping, PathMappingRule, PreprocessorMode, ScanConfig,
+};
 
-let result = scan_headers(&ScanConfig::new().entry_header("demo.h")).unwrap();
-println!("diagnostics: {}", result.package.diagnostics.len());
+let rule = PathMappingRule::try_new(&workspace_root, "workspace")?;
+let mapping = PathMapping::try_new([rule])?;
+let config = ScanConfig::new(checked_target, mapping, PreprocessorMode::Builtin)?
+    .entry_header(workspace_root.join("demo.h"));
+let report = scan_headers(&config)?;
+println!("diagnostics: {}", report.diagnostics().len());
 ```
 
-This is the best fit for downstream toolchains that want declarations,
-provenance, macros, and diagnostics in one package.
+This is the only public header-to-contract path. It returns a checked package;
+diagnostics have one owner and are exposed immutably through `ScanReport` and
+the package.
 
 ## Parse a real file
 

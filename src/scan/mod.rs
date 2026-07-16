@@ -1,745 +1,719 @@
-//! Header scanning frontend for the PARC pipeline.
-//!
-//! This module provides `ScanConfig` and `scan_headers()` for turning
-//! C headers into a `SourcePackage` — either via external preprocessing
-//! (gcc/clang -E) or the built-in preprocessor.
+//! Explicit-target scan pipeline producing the checked schema-v2 contract.
 
 pub mod config;
 
-pub use config::ScanConfig;
-
-use std::io;
-use std::process::Command;
-
-use crate::extract::Extractor;
-use crate::ir::{
-    DiagnosticKind, SourceDefine, SourceDiagnostic, SourceInputs, SourcePackage, SourceTarget,
+pub use config::{
+    EnvironmentPolicy, PathMapping, PathMappingError, PathMappingRule, PreprocessorMode,
+    ScanConfig, ScanConfigError,
 };
 
-/// Result of a header scan operation.
-#[derive(Debug)]
-pub struct ScanResult {
-    pub package: SourcePackage,
-    pub preprocessed_source: String,
+use std::collections::BTreeMap;
+use std::ffi::OsString;
+use std::path::{Path, PathBuf};
+use std::process::Command;
+
+use thiserror::Error;
+
+use crate::contract::*;
+use crate::extract::{extract_contract, ExtractionContext};
+
+const GENERATED_PROVENANCE_CODE: &str = "PARC-P0001";
+const RECOVERY_CODE: &str = "PARC-P0002";
+const BUILTIN_VERSION: &str = concat!(env!("CARGO_PKG_NAME"), "-", env!("CARGO_PKG_VERSION"));
+
+#[derive(Debug, Error)]
+pub enum ScanError {
+    #[error("no entry headers were configured")]
+    NoEntryHeaders,
+    #[error(transparent)]
+    Configuration(#[from] ScanConfigError),
+    #[error(transparent)]
+    PathMapping(#[from] PathMappingError),
+    #[error("could not read {path}: {source}")]
+    Read {
+        path: String,
+        #[source]
+        source: std::io::Error,
+    },
+    #[error("preprocessor executable must be an absolute file path: {0}")]
+    InvalidExecutable(String),
+    #[error("external target has a sysroot identity but no operational sysroot path")]
+    MissingOperationalSysroot,
+    #[error("operational sysroot was supplied for a target with no sysroot identity")]
+    UnexpectedOperationalSysroot,
+    #[error("external preprocessor failed: {0}")]
+    ExternalPreprocessor(String),
+    #[error("built-in preprocessor failed: {0}")]
+    BuiltinPreprocessor(String),
+    #[error("preprocessor output is not UTF-8: {0}")]
+    NonUtf8Output(String),
+    #[error("the built-in preprocessor does not support target {0}")]
+    UnsupportedBuiltinTarget(String),
+    #[error("source artifact exceeds the contract's 64-bit byte range")]
+    SizeOverflow,
+    #[error("path is not valid UTF-8 and cannot be recorded canonically: {0}")]
+    NonUtf8Path(String),
+    #[error("captured environment variable {0} is not valid UTF-8")]
+    NonUtf8Environment(String),
+    #[error("preprocessor executable content differs from TargetSpec.compiler")]
+    CompilerExecutableMismatch,
+    #[error(transparent)]
+    Contract(#[from] SourcePackageBuildError),
 }
 
-/// Scan headers according to the given config, producing a `SourcePackage`.
-pub fn scan_headers(config: &ScanConfig) -> Result<ScanResult, ScanError> {
+struct MaterializedFile {
+    contract: SourceFile,
+}
+
+struct EnvironmentCapture {
+    contract: EnvironmentInputs,
+    values: Vec<(String, String)>,
+    include_paths: Vec<(PathBuf, IncludeSearchKind)>,
+}
+
+struct Preprocessed {
+    text: String,
+    identity: PreprocessorIdentity,
+    warnings: Vec<String>,
+}
+
+/// Scan configured headers. Every declaration range is exact within the
+/// generated preprocessed file. Because original include/macro provenance is
+/// not yet available, this path always returns `Completeness::Partial`.
+pub fn scan_headers(config: &ScanConfig) -> Result<ScanReport, ScanError> {
+    config.validate()?;
     if config.entry_headers.is_empty() {
         return Err(ScanError::NoEntryHeaders);
     }
 
-    let (preprocessed, compiler_cmd) = if config.use_builtin_preprocessor {
-        preprocess_builtin(config)?
-    } else {
-        preprocess_external(config)?
-    };
+    let environment = capture_environment(&config.environment)?;
+    let mut file_table = BTreeMap::new();
+    let mut entry_files = Vec::new();
+    for path in &config.entry_headers {
+        let materialized = materialize_file(config, path, SourceFileRole::Entry)?;
+        entry_files.push(materialized.contract.id);
+        file_table.insert(materialized.contract.id, materialized.contract);
+    }
+    let mut forced_includes = Vec::new();
+    for path in &config.forced_includes {
+        let materialized = materialize_file(config, path, SourceFileRole::UserInclude)?;
+        forced_includes.push(materialized.contract.id);
+        file_table
+            .entry(materialized.contract.id)
+            .or_insert(materialized.contract);
+    }
 
-    let unit = match crate::parse::translation_unit(&preprocessed, config.flavor) {
-        Ok(unit) => unit,
-        Err(e) => {
-            let mut pkg = make_base_package(config, &compiler_cmd);
-            pkg.diagnostics.push(SourceDiagnostic::error(
-                DiagnosticKind::ParseFailed,
-                format!(
-                    "parse error at line {}:{}: {:?}",
-                    e.line, e.column, e.expected
-                ),
-            ));
-            return Ok(ScanResult {
-                package: pkg,
-                preprocessed_source: preprocessed,
-            });
+    let mut include_search = Vec::new();
+    for path in &config.include_dirs {
+        include_search.push(include_search_entry(config, path, IncludeSearchKind::User)?);
+    }
+    for path in &config.system_include_dirs {
+        include_search.push(include_search_entry(
+            config,
+            path,
+            IncludeSearchKind::System,
+        )?);
+    }
+    for (path, kind) in &environment.include_paths {
+        include_search.push(include_search_entry(config, path, *kind)?);
+    }
+
+    let preprocessed = match &config.preprocessor {
+        PreprocessorMode::Builtin => preprocess_builtin(config, &environment)?,
+        PreprocessorMode::External { executable } => {
+            preprocess_external(config, executable, &environment)?
         }
     };
 
-    let extractor = Extractor::new();
-    let (items, diagnostics) = extractor.extract(&unit);
+    let generated_path = config.path_mapping.generated_path().to_owned();
+    let generated_id = FileId::from_logical_path(&generated_path)
+        .expect("PathMapping validates generated logical path");
+    let generated_file = source_file(
+        generated_id,
+        generated_path,
+        SourceFileRole::Generated,
+        preprocessed.text.as_bytes(),
+    )?;
+    file_table.insert(generated_id, generated_file);
 
-    let mut pkg = make_base_package(config, &compiler_cmd);
-    pkg.items = items;
-    pkg.diagnostics = diagnostics;
+    let recovered =
+        crate::parse::translation_unit_resilient(&preprocessed.text, config.parser_flavor());
+    let extracted = extract_contract(
+        &recovered.unit,
+        ExtractionContext {
+            source: &preprocessed.text,
+            generated_file: generated_id,
+            target: config.target.fingerprint(),
+            default_visibility: target_default_visibility(&config.target),
+        },
+    );
 
-    if config.resolve_typedefs {
-        pkg.resolve_all_typedefs();
+    let generated_range = SourceRange {
+        file: generated_id,
+        start: 0,
+        end: u64::try_from(preprocessed.text.len()).map_err(|_| ScanError::SizeOverflow)?,
+    };
+    let generated_reason = CompletenessReason {
+        code: diagnostic_code(GENERATED_PROVENANCE_CODE),
+        message: "declarations refer to exact generated-source ranges; original include and macro provenance is not yet provable".to_owned(),
+        range: Some(generated_range),
+    };
+    let mut diagnostics = extracted.diagnostics;
+    diagnostics.push(SourceDiagnostic {
+        code: generated_reason.code.clone(),
+        stage: DiagnosticStage::Preprocess,
+        severity: Severity::Warning,
+        completeness_impact: DiagnosticCompletenessImpact::ForcesPartial,
+        message: generated_reason.message.clone(),
+        range: generated_reason.range,
+        related: Vec::new(),
+        declaration: None,
+        target: config.target.fingerprint(),
+    });
+    for warning in preprocessed.warnings {
+        diagnostics.push(SourceDiagnostic {
+            code: diagnostic_code("PARC-P0003"),
+            stage: DiagnosticStage::Preprocess,
+            severity: Severity::Warning,
+            completeness_impact: DiagnosticCompletenessImpact::ForcesPartial,
+            message: warning,
+            range: Some(generated_range),
+            related: Vec::new(),
+            declaration: None,
+            target: config.target.fingerprint(),
+        });
     }
+    for recovery in recovered.errors {
+        let range = generated_span_range(generated_id, recovery.skipped, preprocessed.text.len());
+        let message = format!(
+            "parser recovery skipped bytes after error at {}:{}: {:?}",
+            recovery.error.line, recovery.error.column, recovery.error.expected
+        );
+        diagnostics.push(SourceDiagnostic {
+            code: diagnostic_code(RECOVERY_CODE),
+            stage: DiagnosticStage::Recovery,
+            severity: Severity::Error,
+            completeness_impact: DiagnosticCompletenessImpact::ForcesPartial,
+            message,
+            range,
+            related: Vec::new(),
+            declaration: None,
+            target: config.target.fingerprint(),
+        });
+    }
+    diagnostics.sort();
+    diagnostics.dedup();
 
-    Ok(ScanResult {
-        package: pkg,
-        preprocessed_source: preprocessed,
+    let completeness = completeness_from_diagnostics(&diagnostics);
+    let input = SourcePackageInput {
+        target: config.target.clone(),
+        files: file_table.into_values().collect(),
+        inputs: EffectiveSourceInputs {
+            entry_files,
+            include_search,
+            define_events: config.define_events.clone(),
+            forced_includes,
+            preprocessor: preprocessed.identity,
+            environment: environment.contract,
+            path_mapping_fingerprint: config.path_mapping.fingerprint(),
+        },
+        declarations: extracted.declarations,
+        macros: Vec::new(),
+        diagnostics,
+        completeness,
+    };
+    Ok(ScanReport::new(SourcePackage::try_new(input)?))
+}
+
+fn materialize_file(
+    config: &ScanConfig,
+    path: &Path,
+    role: SourceFileRole,
+) -> Result<MaterializedFile, ScanError> {
+    let content = std::fs::read(path).map_err(|source| ScanError::Read {
+        path: path.display().to_string(),
+        source,
+    })?;
+    let logical_path = config.path_mapping.map_path(path)?;
+    let id = FileId::from_logical_path(&logical_path)
+        .expect("PathMapping returns canonical logical paths");
+    Ok(MaterializedFile {
+        contract: source_file(id, logical_path, role, &content)?,
     })
 }
 
-fn make_base_package(config: &ScanConfig, compiler_cmd: &str) -> SourcePackage {
-    SourcePackage {
-        target: SourceTarget {
-            compiler_command: Some(compiler_cmd.to_string()),
-            flavor: Some(format!("{:?}", config.flavor)),
-            ..Default::default()
-        },
-        inputs: SourceInputs {
-            entry_headers: config
-                .entry_headers
-                .iter()
-                .map(|p| p.display().to_string())
-                .collect(),
-            include_dirs: config
-                .include_dirs
-                .iter()
-                .map(|p| p.display().to_string())
-                .collect(),
-            defines: config
-                .defines
-                .iter()
-                .map(|(k, v)| SourceDefine {
-                    name: k.clone(),
-                    value: v.clone(),
-                })
-                .collect(),
-        },
-        ..SourcePackage::new()
+fn source_file(
+    id: FileId,
+    logical_path: String,
+    role: SourceFileRole,
+    content: &[u8],
+) -> Result<SourceFile, ScanError> {
+    Ok(SourceFile {
+        id,
+        logical_path,
+        role,
+        content: ContentFingerprint::from_content(content),
+        byte_len: u64::try_from(content.len()).map_err(|_| ScanError::SizeOverflow)?,
+        line_starts: line_starts(content)?,
+    })
+}
+
+fn line_starts(content: &[u8]) -> Result<Vec<u64>, ScanError> {
+    let mut starts = vec![0];
+    for (index, byte) in content.iter().enumerate() {
+        if *byte == b'\n' {
+            starts.push(u64::try_from(index + 1).map_err(|_| ScanError::SizeOverflow)?);
+        }
+    }
+    Ok(starts)
+}
+
+fn include_search_entry(
+    config: &ScanConfig,
+    path: &Path,
+    kind: IncludeSearchKind,
+) -> Result<IncludeSearchEntry, ScanError> {
+    Ok(IncludeSearchEntry {
+        logical_path: config.path_mapping.map_path(path)?,
+        kind,
+        content: None,
+    })
+}
+
+fn capture_environment(policy: &EnvironmentPolicy) -> Result<EnvironmentCapture, ScanError> {
+    const DOMAIN: &[u8] = b"follang.parc.environment-value.v1\0";
+
+    match policy {
+        EnvironmentPolicy::Hermetic => Ok(EnvironmentCapture {
+            contract: EnvironmentInputs::Hermetic,
+            values: Vec::new(),
+            include_paths: Vec::new(),
+        }),
+        EnvironmentPolicy::Captured { variables } => {
+            let mut values = Vec::new();
+            let mut captured = Vec::new();
+            let mut include_paths = Vec::new();
+            for name in variables {
+                match std::env::var(name) {
+                    Ok(value) => {
+                        let mut fingerprint_input =
+                            Vec::with_capacity(DOMAIN.len() + value.len() + 4);
+                        fingerprint_input.extend_from_slice(DOMAIN);
+                        fingerprint_input.extend_from_slice(b"set\0");
+                        fingerprint_input.extend_from_slice(value.as_bytes());
+                        captured.push(CapturedEnvironment {
+                            name: name.clone(),
+                            value_fingerprint: ContentFingerprint::from_content(&fingerprint_input),
+                        });
+                        if matches!(name.as_str(), "CPATH" | "C_INCLUDE_PATH") {
+                            let kind = if name == "CPATH" {
+                                IncludeSearchKind::User
+                            } else {
+                                IncludeSearchKind::System
+                            };
+                            include_paths
+                                .extend(std::env::split_paths(&value).map(|path| (path, kind)));
+                        }
+                        values.push((name.clone(), value));
+                    }
+                    Err(std::env::VarError::NotPresent) => {
+                        let mut fingerprint_input = Vec::with_capacity(DOMAIN.len() + 5);
+                        fingerprint_input.extend_from_slice(DOMAIN);
+                        fingerprint_input.extend_from_slice(b"unset");
+                        captured.push(CapturedEnvironment {
+                            name: name.clone(),
+                            value_fingerprint: ContentFingerprint::from_content(&fingerprint_input),
+                        });
+                    }
+                    Err(std::env::VarError::NotUnicode(_)) => {
+                        return Err(ScanError::NonUtf8Environment(name.clone()))
+                    }
+                }
+            }
+            Ok(EnvironmentCapture {
+                contract: EnvironmentInputs::Captured {
+                    variables: captured,
+                },
+                values,
+                include_paths,
+            })
+        }
     }
 }
 
-/// Collect include paths from `C_INCLUDE_PATH` and `CPATH` environment variables.
-/// These are colon-separated lists of directories, honored by gcc and clang.
-fn env_include_paths() -> Vec<std::path::PathBuf> {
-    let mut paths = Vec::new();
-    for var in &["C_INCLUDE_PATH", "CPATH"] {
-        if let Ok(val) = std::env::var(var) {
-            for entry in val.split(':') {
-                if !entry.is_empty() {
-                    paths.push(std::path::PathBuf::from(entry));
-                }
+fn preprocess_external(
+    config: &ScanConfig,
+    executable: &Path,
+    environment: &EnvironmentCapture,
+) -> Result<Preprocessed, ScanError> {
+    if !executable.is_absolute() || !executable.is_file() {
+        return Err(ScanError::InvalidExecutable(
+            executable.display().to_string(),
+        ));
+    }
+    match (config.target.sysroot(), &config.external_sysroot) {
+        (Some(_), None) => return Err(ScanError::MissingOperationalSysroot),
+        (None, Some(_)) => return Err(ScanError::UnexpectedOperationalSysroot),
+        _ => {}
+    }
+
+    let executable_bytes = std::fs::read(executable).map_err(|source| ScanError::Read {
+        path: executable.display().to_string(),
+        source,
+    })?;
+    let executable_fingerprint = ContentFingerprint::from_content(&executable_bytes);
+    if executable_fingerprint != config.target.compiler().executable_content() {
+        return Err(ScanError::CompilerExecutableMismatch);
+    }
+
+    let mut command_arguments = Vec::<OsString>::new();
+    let mut arguments = Vec::<String>::new();
+    push_argument(&mut command_arguments, &mut arguments, "-E");
+    push_argument(&mut command_arguments, &mut arguments, "-P");
+    let standard = match (
+        config.target.language_standard(),
+        config.target.extension_profile().family,
+    ) {
+        (LanguageStandard::C11, ExtensionFamily::Strict) => "-std=c11",
+        (LanguageStandard::C11, ExtensionFamily::Gnu | ExtensionFamily::Clang) => "-std=gnu11",
+        (LanguageStandard::C17, ExtensionFamily::Strict) => "-std=c17",
+        (LanguageStandard::C17, ExtensionFamily::Gnu | ExtensionFamily::Clang) => "-std=gnu17",
+        _ => unreachable!("ScanConfig rejects unsupported target dialects"),
+    };
+    push_argument(&mut command_arguments, &mut arguments, standard);
+    if matches!(
+        config.target.compiler().family(),
+        CompilerFamily::Clang | CompilerFamily::AppleClang
+    ) {
+        push_argument(
+            &mut command_arguments,
+            &mut arguments,
+            format!("--target={}", config.target.triple()),
+        );
+    }
+    if let Some(sysroot) = &config.external_sysroot {
+        push_argument(&mut command_arguments, &mut arguments, "--sysroot");
+        command_arguments.push(sysroot.as_os_str().to_owned());
+        arguments.push(
+            config
+                .target
+                .sysroot()
+                .expect("presence checked")
+                .logical_path()
+                .to_owned(),
+        );
+    }
+    for argument in config.target.abi_flags() {
+        push_argument(&mut command_arguments, &mut arguments, argument.as_str());
+    }
+    for directory in &config.include_dirs {
+        push_argument(&mut command_arguments, &mut arguments, "-I");
+        push_mapped_path(config, &mut command_arguments, &mut arguments, directory)?;
+    }
+    for directory in &config.system_include_dirs {
+        push_argument(&mut command_arguments, &mut arguments, "-isystem");
+        push_mapped_path(config, &mut command_arguments, &mut arguments, directory)?;
+    }
+    for path in &config.forced_includes {
+        push_argument(&mut command_arguments, &mut arguments, "-include");
+        push_mapped_path(config, &mut command_arguments, &mut arguments, path)?;
+    }
+    for event in &config.define_events {
+        match event {
+            DefineEvent::Define { name, value } => push_argument(
+                &mut command_arguments,
+                &mut arguments,
+                match value {
+                    Some(value) => format!("-D{name}={value}"),
+                    None => format!("-D{name}"),
+                },
+            ),
+            DefineEvent::Undefine { name } => {
+                push_argument(&mut command_arguments, &mut arguments, format!("-U{name}"))
             }
         }
     }
-    paths
-}
-
-fn preprocess_external(config: &ScanConfig) -> Result<(String, String), ScanError> {
-    let compiler = config.compiler.as_deref().unwrap_or(match config.flavor {
-        crate::driver::Flavor::ClangC11 => "clang",
-        _ => "gcc",
-    });
-
-    let mut cmd = Command::new(compiler);
-    cmd.arg("-E");
-
-    for dir in &config.include_dirs {
-        cmd.arg("-I").arg(dir);
-    }
-    for dir in &config.system_include_dirs {
-        cmd.arg("-isystem").arg(dir);
-    }
-    for (name, value) in &config.defines {
-        match value {
-            Some(v) => cmd.arg(format!("-D{}={}", name, v)),
-            None => cmd.arg(format!("-D{}", name)),
-        };
-    }
-    for header in &config.entry_headers {
-        cmd.arg(header);
+    for path in &config.entry_headers {
+        push_mapped_path(config, &mut command_arguments, &mut arguments, path)?;
     }
 
-    let output = cmd.output().map_err(ScanError::PreprocessorFailed)?;
-
+    let mut command = Command::new(executable);
+    let working_directory = config.entry_headers[0]
+        .parent()
+        .expect("validated absolute entry header has a parent");
+    command
+        .args(&command_arguments)
+        .current_dir(working_directory)
+        .env_clear();
+    for (name, value) in &environment.values {
+        command.env(name, value);
+    }
+    let output = command
+        .output()
+        .map_err(|error| ScanError::ExternalPreprocessor(error.to_string()))?;
     if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-        return Err(ScanError::PreprocessorError(stderr));
+        let stderr = String::from_utf8(output.stderr)
+            .map_err(|error| ScanError::NonUtf8Output(error.to_string()))?;
+        return Err(ScanError::ExternalPreprocessor(stderr));
     }
-
-    let source = String::from_utf8_lossy(&output.stdout).to_string();
-    Ok((source, compiler.to_string()))
+    let text = String::from_utf8(output.stdout)
+        .map_err(|error| ScanError::NonUtf8Output(error.to_string()))?;
+    let stderr = String::from_utf8(output.stderr)
+        .map_err(|error| ScanError::NonUtf8Output(error.to_string()))?;
+    Ok(Preprocessed {
+        text,
+        identity: PreprocessorIdentity::External {
+            executable: config.target.compiler().logical_executable().to_owned(),
+            executable_fingerprint,
+            arguments,
+        },
+        warnings: if stderr.is_empty() {
+            Vec::new()
+        } else {
+            vec![stderr]
+        },
+    })
 }
 
-fn preprocess_builtin(config: &ScanConfig) -> Result<(String, String), ScanError> {
+fn push_argument(
+    command_arguments: &mut Vec<OsString>,
+    recorded_arguments: &mut Vec<String>,
+    value: impl Into<String>,
+) {
+    let value = value.into();
+    command_arguments.push(OsString::from(&value));
+    recorded_arguments.push(value);
+}
+
+fn push_mapped_path(
+    config: &ScanConfig,
+    command_arguments: &mut Vec<OsString>,
+    recorded_arguments: &mut Vec<String>,
+    path: &Path,
+) -> Result<(), ScanError> {
+    command_arguments.push(path.as_os_str().to_owned());
+    recorded_arguments.push(config.path_mapping.map_path(path)?);
+    Ok(())
+}
+
+fn preprocess_builtin(
+    config: &ScanConfig,
+    environment: &EnvironmentCapture,
+) -> Result<Preprocessed, ScanError> {
     use crate::preprocess::{
-        builtin_headers, define_target_macros, IncludeResolver, MacroDef, MacroTable, Processor,
-        Target, Token, TokenKind,
+        builtin_headers, IncludeResolver, MacroDef, MacroTable, Processor, TokenKind,
     };
 
-    // Initialize with target macros for the host platform
-    let target = Target::host();
-    let mut table = MacroTable::new();
-    define_target_macros(&mut table, &target);
-
-    let mut processor = Processor::with_macros(table);
+    let mut macros = MacroTable::new();
+    define_builtin_target_macros(&mut macros, &config.target)?;
+    for event in &config.define_events {
+        match event {
+            DefineEvent::Define { name, value } => {
+                let body_text = value.as_deref().unwrap_or("1");
+                let body = crate::preprocess::Lexer::tokenize(body_text)
+                    .into_iter()
+                    .filter(|token| token.kind != TokenKind::Eof)
+                    .collect();
+                macros.define(MacroDef {
+                    name: name.clone(),
+                    params: None,
+                    is_variadic: false,
+                    body,
+                });
+            }
+            DefineEvent::Undefine { name } => macros.undef(name),
+        }
+    }
+    let mut processor = Processor::with_macros(macros);
     let mut resolver = IncludeResolver::new();
-
-    // Register built-in baseline headers before searching the filesystem.
     resolver.register_builtin_headers(builtin_headers());
-
-    // Add user include dirs (searchable for both "..." and <...> includes)
-    for dir in &config.include_dirs {
-        resolver.add_local_path(dir);
-        resolver.add_system_path(dir);
+    for directory in &config.include_dirs {
+        resolver.add_local_path(directory);
+        resolver.add_system_path(directory);
+    }
+    for directory in &config.system_include_dirs {
+        resolver.add_system_path(directory);
+        resolver.add_local_path(directory);
+    }
+    for (directory, _) in &environment.include_paths {
+        resolver.add_system_path(directory);
+        resolver.add_local_path(directory);
     }
 
-    // Add system include dirs (for <...> includes like /usr/include)
-    for dir in &config.system_include_dirs {
-        resolver.add_system_path(dir);
-        resolver.add_local_path(dir);
+    let mut text = String::new();
+    let mut errors = Vec::new();
+    let mut warnings = Vec::new();
+    for path in config
+        .forced_includes
+        .iter()
+        .chain(config.entry_headers.iter())
+    {
+        let result = resolver.preprocess_file(path, &mut processor);
+        text.push_str(&result.text);
+        text.push('\n');
+        errors.extend(result.errors);
+        warnings.extend(result.warnings);
     }
-
-    // Honor C_INCLUDE_PATH and CPATH environment variables (same as gcc/clang)
-    for dir in env_include_paths() {
-        resolver.add_system_path(&dir);
-        resolver.add_local_path(&dir);
+    if !errors.is_empty() {
+        return Err(ScanError::BuiltinPreprocessor(errors.join("\n")));
     }
+    Ok(Preprocessed {
+        text,
+        identity: PreprocessorIdentity::Builtin {
+            implementation_version: BUILTIN_VERSION.to_owned(),
+        },
+        warnings,
+    })
+}
 
-    // Add defines
-    for (name, value) in &config.defines {
-        let body_text = value.as_deref().unwrap_or("1");
-        let body_tokens = vec![Token {
-            kind: TokenKind::Ident,
-            text: body_text.to_string(),
-            offset: 0,
-        }];
-        processor.macros_mut().define(MacroDef {
-            name: name.clone(),
+fn define_builtin_target_macros(
+    table: &mut crate::preprocess::MacroTable,
+    target: &TargetSpec,
+) -> Result<(), ScanError> {
+    use crate::preprocess::{MacroDef, Token, TokenKind};
+
+    fn define(table: &mut crate::preprocess::MacroTable, name: &str, value: &str) {
+        table.define(MacroDef {
+            name: name.to_owned(),
             params: None,
             is_variadic: false,
-            body: body_tokens,
+            body: vec![Token {
+                kind: TokenKind::Number,
+                text: value.to_owned(),
+                offset: 0,
+            }],
         });
     }
 
-    // Process each entry header
-    let mut all_text = String::new();
-    let mut all_errors = Vec::new();
-
-    for header in &config.entry_headers {
-        let result = resolver.preprocess_file(header.as_ref(), &mut processor);
-        all_text.push_str(&result.text);
-        all_text.push('\n');
-        all_errors.extend(result.errors);
+    define(table, "__STDC__", "1");
+    let stdc_version = match target.language_standard() {
+        LanguageStandard::C11 => "201112L",
+        LanguageStandard::C17 => "201710L",
+        _ => unreachable!("ScanConfig rejects unsupported language standards"),
+    };
+    define(table, "__STDC_VERSION__", stdc_version);
+    define(
+        table,
+        "__CHAR_BIT__",
+        &target.c_data_model().char_bit.to_string(),
+    );
+    define(
+        table,
+        "__SIZEOF_POINTER__",
+        &(target.c_data_model().pointer_layout.storage_bits / 8).to_string(),
+    );
+    define(
+        table,
+        "__SIZEOF_INT__",
+        &(target.c_data_model().int_layout.storage_bits / 8).to_string(),
+    );
+    define(
+        table,
+        "__SIZEOF_LONG__",
+        &(target.c_data_model().long_layout.storage_bits / 8).to_string(),
+    );
+    if target.c_data_model().char_signedness == CharSignedness::Unsigned {
+        define(table, "__CHAR_UNSIGNED__", "1");
     }
-
-    if !all_errors.is_empty() {
-        return Err(ScanError::PreprocessorError(all_errors.join("\n")));
+    match target.architecture() {
+        Architecture::X86_64 => define(table, "__x86_64__", "1"),
+        Architecture::X86 => define(table, "__i386__", "1"),
+        Architecture::Aarch64 => define(table, "__aarch64__", "1"),
+        Architecture::Arm => define(table, "__arm__", "1"),
+        architecture => {
+            return Err(ScanError::UnsupportedBuiltinTarget(format!(
+                "architecture {architecture:?}"
+            )))
+        }
     }
-
-    Ok((all_text, "builtin".to_string()))
+    match target.operating_system() {
+        OperatingSystem::Linux | OperatingSystem::Android => {
+            define(table, "__linux__", "1");
+            define(table, "__unix__", "1");
+        }
+        OperatingSystem::Darwin | OperatingSystem::MacOs => {
+            define(table, "__APPLE__", "1");
+            define(table, "__MACH__", "1");
+        }
+        OperatingSystem::Windows => define(table, "_WIN32", "1"),
+        operating_system => {
+            return Err(ScanError::UnsupportedBuiltinTarget(format!(
+                "operating system {operating_system:?}"
+            )))
+        }
+    }
+    if target.endian() == Endian::Little {
+        define(table, "__BYTE_ORDER__", "1234");
+    } else {
+        define(table, "__BYTE_ORDER__", "4321");
+    }
+    define(table, "__ORDER_LITTLE_ENDIAN__", "1234");
+    define(table, "__ORDER_BIG_ENDIAN__", "4321");
+    match target.compiler().family() {
+        CompilerFamily::Gcc => {
+            if let Some(major) = target.compiler().version().split('.').next() {
+                if major.bytes().all(|byte| byte.is_ascii_digit()) {
+                    define(table, "__GNUC__", major);
+                }
+            }
+        }
+        CompilerFamily::Clang | CompilerFamily::AppleClang => define(table, "__clang__", "1"),
+        CompilerFamily::Msvc => {}
+    }
+    Ok(())
 }
 
-/// Errors from the scan operation.
-#[derive(Debug)]
-pub enum ScanError {
-    NoEntryHeaders,
-    PreprocessorFailed(io::Error),
-    PreprocessorError(String),
+fn generated_span_range(file: FileId, span: crate::span::Span, len: usize) -> Option<SourceRange> {
+    if span.is_none() || span.start > span.end || span.end > len {
+        return None;
+    }
+    Some(SourceRange {
+        file,
+        start: u64::try_from(span.start).ok()?,
+        end: u64::try_from(span.end).ok()?,
+    })
 }
 
-impl std::fmt::Display for ScanError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ScanError::NoEntryHeaders => write!(f, "no entry headers specified"),
-            ScanError::PreprocessorFailed(e) => write!(f, "preprocessor failed: {}", e),
-            ScanError::PreprocessorError(s) => write!(f, "preprocessor error: {}", s),
-        }
-    }
+fn diagnostic_code(value: &str) -> DiagnosticCode {
+    DiagnosticCode::new(value).expect("static diagnostic code")
 }
 
-impl std::error::Error for ScanError {}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn scan_no_headers_error() {
-        let config = ScanConfig::new();
-        let result = scan_headers(&config);
-        assert!(result.is_err());
+fn target_default_visibility(target: &TargetSpec) -> Visibility {
+    let mut visibility = Visibility::Unspecified;
+    for argument in target.abi_flags() {
+        visibility = match argument.as_str() {
+            "-fvisibility=default" => Visibility::TargetDefault,
+            "-fvisibility=hidden" => Visibility::Hidden,
+            "-fvisibility=protected" => Visibility::Protected,
+            "-fvisibility=internal" => Visibility::Internal,
+            _ => visibility,
+        };
     }
-
-    #[test]
-    fn scan_config_builder() {
-        let config = ScanConfig::new()
-            .entry_header("test.h")
-            .include_dir("/usr/include")
-            .define("VERSION", Some("2".into()))
-            .define_flag("DEBUG")
-            .with_flavor(crate::driver::Flavor::StdC11);
-
-        assert_eq!(config.entry_headers.len(), 1);
-        assert_eq!(config.include_dirs.len(), 1);
-        assert_eq!(config.defines.len(), 2);
-        assert_eq!(config.flavor, crate::driver::Flavor::StdC11);
-    }
-
-    #[test]
-    fn scan_builtin_with_temp_file() {
-        let dir = std::env::temp_dir().join("pac_test_scan");
-        let _ = std::fs::create_dir_all(&dir);
-        std::fs::write(
-            dir.join("api.h"),
-            "typedef int int32_t;\nint32_t get_value(void);\n",
-        )
-        .unwrap();
-
-        let config = ScanConfig::new()
-            .entry_header(dir.join("api.h"))
-            .with_builtin_preprocessor();
-
-        let result = scan_headers(&config).expect("scan should succeed");
-        assert!(result.package.functions().count() >= 1);
-        assert!(result.package.type_aliases().count() >= 1);
-
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn scan_builtin_with_include() {
-        let dir = std::env::temp_dir().join("pac_test_scan_inc");
-        let _ = std::fs::create_dir_all(&dir);
-        std::fs::write(dir.join("types.h"), "typedef unsigned int uint32_t;\n").unwrap();
-        std::fs::write(
-            dir.join("api.h"),
-            "#include \"types.h\"\nuint32_t get_id(void);\n",
-        )
-        .unwrap();
-
-        let config = ScanConfig::new()
-            .entry_header(dir.join("api.h"))
-            .with_builtin_preprocessor();
-
-        let result = scan_headers(&config).expect("scan should succeed");
-        assert!(result.package.type_aliases().count() >= 1);
-        assert!(result.package.functions().count() >= 1);
-
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn scan_config_default() {
-        let config = ScanConfig::default();
-        assert!(config.entry_headers.is_empty());
-        assert!(!config.use_builtin_preprocessor);
-    }
-
-    #[test]
-    fn scan_populates_inputs_metadata() {
-        let dir = std::env::temp_dir().join("pac_test_scan_meta");
-        let _ = std::fs::create_dir_all(&dir);
-        std::fs::write(dir.join("a.h"), "int x;\n").unwrap();
-
-        let config = ScanConfig::new()
-            .entry_header(dir.join("a.h"))
-            .include_dir("/opt/include")
-            .define("VER", Some("3".into()))
-            .with_builtin_preprocessor();
-
-        let result = scan_headers(&config).unwrap();
-        assert_eq!(result.package.inputs.include_dirs.len(), 1);
-        assert_eq!(result.package.inputs.defines.len(), 1);
-        assert_eq!(result.package.inputs.defines[0].name, "VER");
-
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn scan_config_json_roundtrip() {
-        let config = ScanConfig::new()
-            .entry_header("api.h")
-            .define_flag("NDEBUG");
-        let json = serde_json::to_string(&config).unwrap();
-        let back: ScanConfig = serde_json::from_str(&json).unwrap();
-        assert_eq!(back.entry_headers.len(), 1);
-        assert_eq!(back.defines.len(), 1);
-    }
-
-    #[test]
-    fn scan_system_include_dir() {
-        let dir = std::env::temp_dir().join("pac_test_sys_inc");
-        let sysdir = dir.join("sys");
-        let _ = std::fs::create_dir_all(&sysdir);
-
-        // System header in a separate directory
-        std::fs::write(sysdir.join("mytypes.h"), "typedef unsigned long size_t;\n").unwrap();
-        std::fs::write(
-            dir.join("api.h"),
-            "#include <mytypes.h>\nsize_t get_size(void);\n",
-        )
-        .unwrap();
-
-        let config = ScanConfig::new()
-            .entry_header(dir.join("api.h"))
-            .system_include_dir(&sysdir)
-            .with_builtin_preprocessor();
-
-        let result = scan_headers(&config).expect("scan should succeed");
-        assert!(result.package.find_type_alias("size_t").is_some());
-        assert!(result.package.find_function("get_size").is_some());
-
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn scan_with_resolve_typedefs() {
-        let dir = std::env::temp_dir().join("pac_test_resolve");
-        let _ = std::fs::create_dir_all(&dir);
-
-        std::fs::write(
-            dir.join("api.h"),
-            r#"
-typedef unsigned int uint32_t;
-typedef uint32_t handle_t;
-handle_t create(void);
-void destroy(handle_t h);
-"#,
-        )
-        .unwrap();
-
-        let config = ScanConfig::new()
-            .entry_header(dir.join("api.h"))
-            .with_builtin_preprocessor()
-            .with_resolve_typedefs();
-
-        let result = scan_headers(&config).expect("scan should succeed");
-        let pkg = &result.package;
-
-        // After resolution: handle_t's target should be UInt, not TypedefRef
-        let alias = pkg.find_type_alias("handle_t").unwrap();
-        assert_eq!(alias.target, crate::ir::SourceType::UInt);
-
-        // Function return type should be resolved
-        let create = pkg.find_function("create").unwrap();
-        assert_eq!(create.return_type, crate::ir::SourceType::UInt);
-
-        let destroy = pkg.find_function("destroy").unwrap();
-        assert_eq!(destroy.parameters[0].ty, crate::ir::SourceType::UInt);
-
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn scan_system_include_with_resolve() {
-        let dir = std::env::temp_dir().join("pac_test_sys_resolve");
-        let sysdir = dir.join("inc");
-        let _ = std::fs::create_dir_all(&sysdir);
-
-        std::fs::write(sysdir.join("base.h"), "typedef unsigned long size_t;\n").unwrap();
-        std::fs::write(
-            dir.join("api.h"),
-            "#include <base.h>\nvoid *alloc(size_t n);\nsize_t length(const void *p);\n",
-        )
-        .unwrap();
-
-        let config = ScanConfig::new()
-            .entry_header(dir.join("api.h"))
-            .system_include_dir(&sysdir)
-            .with_builtin_preprocessor()
-            .with_resolve_typedefs();
-
-        let result = scan_headers(&config).expect("scan should succeed");
-        let pkg = &result.package;
-
-        // size_t should be resolved to ULong
-        let alloc = pkg.find_function("alloc").unwrap();
-        assert_eq!(alloc.parameters[0].ty, crate::ir::SourceType::ULong);
-
-        let length = pkg.find_function("length").unwrap();
-        assert_eq!(length.return_type, crate::ir::SourceType::ULong);
-
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn scan_config_system_dirs_builder() {
-        let config = ScanConfig::new()
-            .entry_header("api.h")
-            .system_include_dir("/usr/include")
-            .system_include_dir("/usr/local/include")
-            .with_resolve_typedefs();
-
-        assert_eq!(config.system_include_dirs.len(), 2);
-        assert!(config.resolve_typedefs);
-    }
-
-    #[test]
-    fn scan_builtin_honors_env_include_paths() {
-        // All env var tests in one function to avoid parallel race conditions
-        // on C_INCLUDE_PATH / CPATH.
-
-        let old_cinc = std::env::var("C_INCLUDE_PATH").ok();
-        let old_cpath = std::env::var("CPATH").ok();
-
-        // --- Test 1: C_INCLUDE_PATH single dir ---
-        {
-            let dir = std::env::temp_dir().join("pac_test_env_inc");
-            let inc_dir = dir.join("envheaders");
-            let _ = std::fs::create_dir_all(&inc_dir);
-
-            std::fs::write(inc_dir.join("envtype.h"), "typedef int env_int_t;\n").unwrap();
-            std::fs::write(
-                dir.join("main.h"),
-                "#include <envtype.h>\nenv_int_t get_env_val(void);\n",
-            )
-            .unwrap();
-
-            std::env::set_var("C_INCLUDE_PATH", inc_dir.display().to_string());
-            std::env::remove_var("CPATH");
-
-            let config = ScanConfig::new()
-                .entry_header(dir.join("main.h"))
-                .with_builtin_preprocessor();
-
-            let result = scan_headers(&config).expect("C_INCLUDE_PATH single dir");
-            assert!(result.package.find_type_alias("env_int_t").is_some());
-            assert!(result.package.find_function("get_env_val").is_some());
-
-            let _ = std::fs::remove_dir_all(&dir);
-        }
-
-        // --- Test 2: CPATH ---
-        {
-            let dir = std::env::temp_dir().join("pac_test_cpath");
-            let inc_dir = dir.join("cpathheaders");
-            let _ = std::fs::create_dir_all(&inc_dir);
-
-            std::fs::write(inc_dir.join("cptype.h"), "typedef long cp_long_t;\n").unwrap();
-            std::fs::write(
-                dir.join("main.h"),
-                "#include <cptype.h>\ncp_long_t get_cp_val(void);\n",
-            )
-            .unwrap();
-
-            std::env::remove_var("C_INCLUDE_PATH");
-            std::env::set_var("CPATH", inc_dir.display().to_string());
-
-            let config = ScanConfig::new()
-                .entry_header(dir.join("main.h"))
-                .with_builtin_preprocessor();
-
-            let result = scan_headers(&config).expect("CPATH single dir");
-            assert!(result.package.find_type_alias("cp_long_t").is_some());
-            assert!(result.package.find_function("get_cp_val").is_some());
-
-            let _ = std::fs::remove_dir_all(&dir);
-        }
-
-        // --- Test 3: C_INCLUDE_PATH with multiple colon-separated dirs ---
-        {
-            let dir = std::env::temp_dir().join("pac_test_env_multi");
-            let inc1 = dir.join("inc1");
-            let inc2 = dir.join("inc2");
-            let _ = std::fs::create_dir_all(&inc1);
-            let _ = std::fs::create_dir_all(&inc2);
-
-            std::fs::write(inc1.join("a.h"), "typedef int a_t;\n").unwrap();
-            std::fs::write(inc2.join("b.h"), "typedef long b_t;\n").unwrap();
-            std::fs::write(
-                dir.join("main.h"),
-                "#include <a.h>\n#include <b.h>\na_t fa(void);\nb_t fb(void);\n",
-            )
-            .unwrap();
-
-            std::env::set_var(
-                "C_INCLUDE_PATH",
-                format!("{}:{}", inc1.display(), inc2.display()),
-            );
-            std::env::remove_var("CPATH");
-
-            let config = ScanConfig::new()
-                .entry_header(dir.join("main.h"))
-                .with_builtin_preprocessor();
-
-            let result = scan_headers(&config).expect("C_INCLUDE_PATH multi dirs");
-            assert!(result.package.find_function("fa").is_some());
-            assert!(result.package.find_function("fb").is_some());
-
-            let _ = std::fs::remove_dir_all(&dir);
-        }
-
-        // Restore original env
-        match old_cinc {
-            Some(v) => std::env::set_var("C_INCLUDE_PATH", v),
-            None => std::env::remove_var("C_INCLUDE_PATH"),
-        }
-        match old_cpath {
-            Some(v) => std::env::set_var("CPATH", v),
-            None => std::env::remove_var("CPATH"),
-        }
-    }
-
-    #[test]
-    fn scan_builtin_stdint_h() {
-        let dir = std::env::temp_dir().join("pac_test_stdint");
-        let _ = std::fs::create_dir_all(&dir);
-        std::fs::write(
-            dir.join("api.h"),
-            r#"
-#include <stdint.h>
-#include <stddef.h>
-int32_t get_id(void);
-uint64_t get_timestamp(void);
-void set_data(const uint8_t *buf, size_t len);
-intptr_t get_handle(void);
-"#,
-        )
-        .unwrap();
-
-        let config = ScanConfig::new()
-            .entry_header(dir.join("api.h"))
-            .with_builtin_preprocessor()
-            .with_resolve_typedefs();
-
-        let result = scan_headers(&config).expect("scan with stdint.h should succeed");
-        let pkg = &result.package;
-
-        // Should find all four functions
-        assert!(pkg.find_function("get_id").is_some(), "missing get_id");
-        assert!(
-            pkg.find_function("get_timestamp").is_some(),
-            "missing get_timestamp"
-        );
-        assert!(pkg.find_function("set_data").is_some(), "missing set_data");
-        assert!(
-            pkg.find_function("get_handle").is_some(),
-            "missing get_handle"
-        );
-
-        // With resolve_typedefs, int32_t -> signed int, uint64_t -> unsigned long (on 64-bit)
-        let get_id = pkg.find_function("get_id").unwrap();
-        assert_eq!(get_id.return_type, crate::ir::SourceType::Int);
-
-        // stdint types should be present as type aliases
-        assert!(pkg.find_type_alias("int32_t").is_some());
-        assert!(pkg.find_type_alias("uint64_t").is_some());
-        assert!(pkg.find_type_alias("uint8_t").is_some());
-        assert!(pkg.find_type_alias("intptr_t").is_some());
-
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn scan_builtin_stddef_h() {
-        let dir = std::env::temp_dir().join("pac_test_stddef");
-        let _ = std::fs::create_dir_all(&dir);
-        std::fs::write(
-            dir.join("api.h"),
-            "#include <stddef.h>\nvoid *alloc(size_t n);\nptrdiff_t diff(const void *a, const void *b);\n",
-        )
-        .unwrap();
-
-        let config = ScanConfig::new()
-            .entry_header(dir.join("api.h"))
-            .with_builtin_preprocessor();
-
-        let result = scan_headers(&config).expect("scan with stddef.h should succeed");
-        let pkg = &result.package;
-
-        assert!(pkg.find_function("alloc").is_some(), "missing alloc");
-        assert!(pkg.find_function("diff").is_some(), "missing diff");
-        assert!(pkg.find_type_alias("size_t").is_some());
-        assert!(pkg.find_type_alias("ptrdiff_t").is_some());
-
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn scan_builtin_stdarg_and_unistd_baseline() {
-        let dir = std::env::temp_dir().join("parc_scan_builtin_stdarg_unistd");
-        let _ = std::fs::create_dir_all(&dir);
-        std::fs::write(
-            dir.join("api.h"),
-            "#include <stdarg.h>\n#include <sys/types.h>\n#include <unistd.h>\ntypedef off_t stream_off_t;\nint seek_to(stream_off_t offset, int whence);\nint format_line(const char *fmt, va_list ap);\n",
-        )
-        .unwrap();
-
-        let config = ScanConfig::new()
-            .entry_header(dir.join("api.h"))
-            .with_builtin_preprocessor();
-
-        let result = scan_headers(&config).expect("scan with stdarg/sys/types/unistd succeeds");
-        let pkg = &result.package;
-
-        assert!(pkg.find_type_alias("off_t").is_some());
-        assert!(pkg.find_type_alias("ssize_t").is_some());
-        assert!(pkg.find_type_alias("stream_off_t").is_some());
-        assert!(pkg.find_function("seek_to").is_some());
-        assert!(pkg.find_function("format_line").is_some());
-        assert!(result.preprocessed_source.contains("va_list"));
-        assert!(result.preprocessed_source.contains("stream_off_t"));
-
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[cfg(feature = "system-tests")]
-    #[test]
-    fn scan_builtin_vs_gcc_stdint_types() {
-        const TEST_NAME: &str = "scan_builtin_vs_gcc_stdint_types";
-        if !crate::tests::system_support::begin_system_test(
-            TEST_NAME,
-            crate::tests::system_support::command_available("gcc"),
-            "gcc",
-        ) {
-            return;
-        }
-
-        // Compare our builtin stdint.h extraction with gcc -E extraction
-        // for the same source. Both should produce equivalent resolved types.
-        let dir = std::env::temp_dir().join("pac_test_stdint_cmp");
-        let _ = std::fs::create_dir_all(&dir);
-        let header = r#"
-#include <stdint.h>
-int32_t get_id(void);
-uint8_t get_byte(void);
-int64_t get_big(void);
-"#;
-        std::fs::write(dir.join("api.h"), header).unwrap();
-
-        // Builtin preprocessor with typedef resolution
-        // Keep the builtin half independent from the native toolchain's Nix/
-        // system include roots; restore them before invoking gcc below.
-        let saved_cpath = std::env::var_os("CPATH");
-        let saved_c_include_path = std::env::var_os("C_INCLUDE_PATH");
-        std::env::remove_var("CPATH");
-        std::env::remove_var("C_INCLUDE_PATH");
-        let builtin_config = ScanConfig::new()
-            .entry_header(dir.join("api.h"))
-            .with_builtin_preprocessor()
-            .with_resolve_typedefs();
-        let builtin_result = scan_headers(&builtin_config).expect("builtin scan");
-        match saved_cpath {
-            Some(value) => std::env::set_var("CPATH", value),
-            None => std::env::remove_var("CPATH"),
-        }
-        match saved_c_include_path {
-            Some(value) => std::env::set_var("C_INCLUDE_PATH", value),
-            None => std::env::remove_var("C_INCLUDE_PATH"),
-        }
-
-        let builtin_pkg = &builtin_result.package;
-        let get_id = builtin_pkg.find_function("get_id").unwrap();
-        let get_byte = builtin_pkg.find_function("get_byte").unwrap();
-        let get_big = builtin_pkg.find_function("get_big").unwrap();
-
-        // After resolution: int32_t -> Int, uint8_t -> UChar, int64_t -> Long (on 64-bit)
-        assert_eq!(get_id.return_type, crate::ir::SourceType::Int);
-        assert_eq!(get_byte.return_type, crate::ir::SourceType::UChar);
-        assert_eq!(get_big.return_type, crate::ir::SourceType::Long);
-
-        // External preprocessor (gcc) with typedef resolution
-        let gcc_config = ScanConfig::new()
-            .entry_header(dir.join("api.h"))
-            .with_resolve_typedefs();
-
-        let gcc_result = scan_headers(&gcc_config).expect("external gcc scan");
-        let gcc_pkg = &gcc_result.package;
-        let gcc_id = gcc_pkg.find_function("get_id").unwrap();
-        let gcc_byte = gcc_pkg.find_function("get_byte").unwrap();
-        let gcc_big = gcc_pkg.find_function("get_big").unwrap();
-
-        // Both should resolve to the same primitive types
-        assert_eq!(get_id.return_type, gcc_id.return_type, "int32_t mismatch");
-        assert_eq!(
-            get_byte.return_type, gcc_byte.return_type,
-            "uint8_t mismatch"
-        );
-        assert_eq!(get_big.return_type, gcc_big.return_type, "int64_t mismatch");
-
-        let _ = std::fs::remove_dir_all(&dir);
+    visibility
+}
+
+fn completeness_from_diagnostics(diagnostics: &[SourceDiagnostic]) -> Completeness {
+    let mut reasons = diagnostics
+        .iter()
+        .filter(|diagnostic| {
+            diagnostic.completeness_impact != DiagnosticCompletenessImpact::Informational
+        })
+        .map(|diagnostic| CompletenessReason {
+            code: diagnostic.code.clone(),
+            message: diagnostic.message.clone(),
+            range: diagnostic.range,
+        })
+        .collect::<Vec<_>>();
+    reasons.sort();
+    reasons.dedup();
+
+    if diagnostics.iter().any(|diagnostic| {
+        diagnostic.completeness_impact == DiagnosticCompletenessImpact::ForcesRejected
+    }) {
+        Completeness::Rejected { reasons }
+    } else if reasons.is_empty() {
+        Completeness::Complete
+    } else {
+        Completeness::Partial { reasons }
     }
 }

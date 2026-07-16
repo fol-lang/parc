@@ -1,128 +1,69 @@
-# Unsupported Cases
+# Unsupported and Partial Cases
 
-This chapter records the important unsupported or intentionally out-of-scope
-areas.
+Absence of a field is never evidence of support. Consumers must read package
+`Completeness`, declaration and type `SupportStatus`, and structured
+diagnostics together.
 
-The goal is to prevent downstream users from mistaking absence of detail for
-implicit support.
+## Current closure ledger
 
-It also acts as the current frontend-family closure ledger. Every hard family
-should fit into one of these buckets:
-
-- covered on named fixtures
-- resilient-only behavior
-- diagnostics-only improvement
-- intentional rejection
-
-This is a pre-certification evidence ledger. If a family is not classified
-here, it has no documented fixture-backed behavior; classification still does
-not make it a production guarantee.
-
-## Frontend-Family Closure Ledger
-
-The current important families are:
-
-| Family | Current state | Notes |
+| Family | Current state | Boundary |
 | --- | --- | --- |
-| K&R function declarations | diagnostics-only improvement | PARC preserves the function surface and emits explicit unsupported diagnostics. |
-| block pointers | intentional rejection | They still fail in parsing; current work is about sharper diagnostics, not pretending they lower cleanly. |
-| bitfield-heavy records | resilient-only support | PARC keeps record shape and bit widths, but layout truth remains partial. |
-| vendor attributes and calling-convention attributes | resilient-only support | PARC preserves the declaration and emits partial diagnostics when attributes are ignored. |
-| macro-heavy include stacks | covered on named repository corpora | The named corpora are only regression evidence; they do not prove broad closure. |
-| hostile include-order and typedef-chain environments | covered on named repository corpora | Treat this as corpus-backed evidence, not universal extension parity. |
+| K&R function declarators | Unsupported | Preserved as unsupported source structure; no guessed modern prototype |
+| Block pointers | Unsupported or recovered | Not lowered as ordinary C function pointers |
+| Bitfields | Source width preserved | Measured allocation/layout remains downstream |
+| Known calling conventions | Modeled when unambiguous | Malformed or conflicting attributes force rejection |
+| `visibility` attributes | Modeled when exact | Unknown values, malformed arguments, or conflicts force rejection |
+| Other ABI-relevant attributes | Partial | Spelling/range is preserved and `PARC-P1205` forces partial completeness |
+| Macro-heavy include stacks | Generated-source partial | Parsing may succeed, but original macro/include provenance is not claimed |
+| Cross-translation-unit declarations | Out of scope | H1 scans exactly one entry translation unit at a time |
 
-This ledger is intentionally blunt:
+Named parser corpora demonstrate behavior on those fixtures only. They do not
+upgrade an H1 scan to complete provenance or establish universal compiler/SDK
+compatibility.
 
-- if a family is not yet honestly representable, reject it
-- if a family is only partially representable, say so
-- if a family is only proven on named corpora, document that exact scope
+## Semantic boundary
 
-There is no production platform envelope during H0. Read each row literally as
-fixture coverage, partial behavior with diagnostics, or explicit rejection.
-
-## Semantic analysis
-
-PARC does not provide:
-
-- full name resolution
-- type checking
-- constant folding as a stable analysis contract
-- ABI or layout proof
-- compiler-quality warnings
-
-It is a parser with source-structure support, not a complete compiler frontend.
+PARC preserves source declarations and performs conservative compatibility
+checks for redeclarations. It is not a full name resolver, type checker, layout
+engine, linker, or compiler-quality warning system. Record offsets, enum object
+representation, symbols, and linkability belong to later evidence owners.
 
 ## Preprocessing
 
-PARC does not implement a standalone C preprocessor in the `driver` path.
+Scanning supports an explicit built-in mode and a fingerprint-checked external
+executable. The built-in implementation is a controlled compatibility surface,
+not a complete substitute for every compiler preprocessor. The older `driver`
+APIs remain syntax-oriented parsing helpers and do not create a checked source
+contract.
 
-Instead it depends on an external preprocessor command such as:
+## Macro inventory and provenance
 
-- `gcc -E`
-- `clang -E`
+Schema v2 has a first-class macro table and macro-provenance types. The current
+H1 `scan_headers` producer intentionally emits an empty macro table because it
+cannot yet prove original definition and expansion ranges after preprocessing.
+`PARC-P0001` records that gap and forces `Completeness::Partial`.
 
-That means PARC does not try to normalize every compiler's preprocessing
-behavior internally.
+Driver utilities may inspect active preprocessing macros, but their output is
+not a substitute for checked `SourcePackage` macro evidence.
 
-The built-in preprocessor is increasingly useful for scan-first workflows, but
-it is still a scoped compatibility surface rather than a promise of universal
-host-header parity.
+## Extensions
 
-## Extension completeness
+GNU and Clang parser profiles cover maintained syntax families, not every
+version-specific extension. Unknown ABI-relevant declaration attributes are
+retained with ranges and partial support; constructs that cannot be represented
+without guessing are rejected or recovered with diagnostics.
 
-PARC supports several GNU and Clang extensions, but the project does not promise
-complete parity with every extension accepted by modern GCC or Clang releases.
+## Diagnostics
 
-Downstream tools should not assume:
+Schema-v2 packages contain stable categorized `SourceDiagnostic` values with
+stage, severity, completeness impact, range, target, and optional declaration
+ownership. They do not currently promise compiler-style fix-its or exhaustive
+warning policy. Parser recovery and unsupported lowering are explicit trust
+outcomes, not silent success.
 
-- full GNU extension completeness
-- full Clang extension completeness
-- identical acceptance behavior across all compiler-version-specific syntax edges
+## Consumer rule
 
-## Macro inventory and expansion modeling
-
-PARC has macro-capture helpers and `SourcePackage.macros`, but not every
-entrypoint populates them and the current version-1 artifact does not promise a
-complete, stable semantic inventory of macro definitions.
-
-## Translation-unit semantics
-
-PARC can parse translation units, but it does not guarantee:
-
-- cross-file symbol resolution
-- duplicate-definition analysis as a stable feature
-- semantic correctness of declarations
-- linkability of parsed declarations
-
-Those tasks belong to later analysis layers, not the parser itself.
-
-## Diagnostics depth
-
-PARC does not currently provide:
-
-- warning classes
-- fix-it suggestions
-- rich categorized error codes
-- a stable diagnostic JSON schema
-
-The current error model is strong enough for syntax handling, not full compiler
-UX.
-
-The practical rule for the remaining hard families is:
-
-- if PARC can keep a trustworthy declaration surface, it should do so and emit
-  diagnostics
-- if PARC cannot keep a trustworthy declaration surface, it should reject the
-  construct explicitly
-
-## Consumer guidance
-
-Downstream tools should treat these gaps as explicit non-guarantees.
-
-That means:
-
-- build policy around syntax success and failure, not semantic certainty
-- isolate extension-heavy assumptions behind tests
-- keep representative preprocessed fixtures for any hard parser dependency
-- treat the closure ledger above as part of the real contract, not as a vague
-  future roadmap
+Use `ScanReport::into_complete` or `SourcePackage::into_complete` with an
+explicit `Selection`. Do not special-case away forcing diagnostics, infer
+completeness from parser success, or merge independent entry headers into a
+single translation unit.

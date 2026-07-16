@@ -75,6 +75,14 @@ pub struct Parse {
     pub unit: TranslationUnit,
 }
 
+/// Result of resilient parsing with every skipped byte range preserved.
+#[derive(Clone, Debug)]
+pub struct RecoveredParse {
+    pub source: String,
+    pub unit: TranslationUnit,
+    pub errors: Vec<crate::parser::RecoveryError>,
+}
+
 #[derive(Debug)]
 /// Error type returned from `parse`
 pub enum Error {
@@ -186,15 +194,19 @@ pub fn parse_preprocessed(config: &Config, source: String) -> Result<Parse, Synt
     }
 }
 
-pub fn parse_preprocessed_resilient(config: &Config, source: String) -> Parse {
+pub fn parse_preprocessed_resilient(config: &Config, source: String) -> RecoveredParse {
     let mut env = match config.flavor {
         Flavor::StdC11 => Env::with_core(),
         Flavor::GnuC11 => Env::with_gnu(),
         Flavor::ClangC11 => Env::with_clang(),
     };
 
-    let unit = translation_unit_resilient(&source, &mut env);
-    Parse { source, unit }
+    let recovered = translation_unit_resilient(&source, &mut env);
+    RecoveredParse {
+        source,
+        unit: recovered.unit,
+        errors: recovered.errors,
+    }
 }
 
 /// Parse a C file using the built-in preprocessor (no external gcc/clang needed).

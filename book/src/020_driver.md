@@ -144,8 +144,8 @@ original file and include stack.
 
 ## Built-in preprocessor
 
-PARC includes a built-in C preprocessor that eliminates the need for an external
-`gcc` or `clang` binary. Use `parse_builtin` instead of `parse`:
+PARC includes a scoped built-in preprocessor for controlled syntax workflows.
+Use `parse_builtin` instead of `parse` when its maintained surface is sufficient:
 
 ```rust
 use parc::driver::{parse_builtin, Config};
@@ -157,14 +157,14 @@ let parsed = parse_builtin(&config, "src/input.c", &include_paths)?;
 # Ok::<(), parc::driver::Error>(())
 ```
 
-The built-in preprocessor supports:
+The built-in preprocessor implements common:
 
 - Object-like and function-like macros (with `#`, `##`, `__VA_ARGS__`)
 - Conditional compilation (`#if`, `#ifdef`, `#ifndef`, `#elif`, `#else`, `#endif`)
 - `#include` resolution with configurable search paths
 - Include guard detection and optimization
 - `defined()` operator in `#if` expressions
-- Full C constant expression evaluation (arithmetic, bitwise, logical, ternary)
+- Conditional-expression evaluation (arithmetic, bitwise, logical, ternary)
 - Predefined target macros (architecture, OS, GCC compatibility)
 
 ## Macro extraction
@@ -182,12 +182,15 @@ for (name, value) in &macros {
 # Ok::<(), parc::driver::Error>(())
 ```
 
-This returns all macros active after preprocessing, including predefined target
-macros and macros from included headers.
+This driver utility returns active preprocessing macros, including predefined
+target macros and macros from included headers. It is not the checked schema-v2
+macro inventory: current H1 scans emit an empty contract macro table and
+`PARC-P0001` until definition/expansion provenance can be proven.
 
 ## Practical advice
 
 - Keep `parsed.source` if you plan to report errors later.
 - Use `parse_preprocessed` for deterministic regression tests.
 - Prefer explicit `cpp_options` in tools and CI so parse behavior stays reproducible.
-- Use `parse_builtin` when you need zero-dependency parsing without a C toolchain.
+- Use `parse_builtin` only for controlled syntax inputs. For a source contract,
+  use `scan_headers` with an explicit `TargetSpec` and preprocessor mode.

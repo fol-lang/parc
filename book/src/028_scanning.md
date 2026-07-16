@@ -1,100 +1,56 @@
 # Header Scanning
 
-`parc::scan` is the highest-level PARC API for people who want the source
-contract, not just the AST. It preprocesses headers, parses them, extracts
-items, and returns a `SourcePackage` plus the preprocessed source text.
+`parc::scan` is the public source-contract producer.
 
-## Quick Start
+## Required configuration
 
-```rust
-use parc::scan::{ScanConfig, scan_headers};
+`ScanConfig::new` requires a checked `TargetSpec`, a `PathMapping`, and a
+`PreprocessorMode`. There is no host/default target or implicit environment.
 
-let config = ScanConfig::new()
-    .entry_header("api.h")
-    .include_dir("/usr/include")
-    .define_flag("NDEBUG")
-    .with_builtin_preprocessor();
+```rust,ignore
+use parc::scan::{scan_headers, PathMapping, PathMappingRule, PreprocessorMode, ScanConfig};
 
-let result = scan_headers(&config).unwrap();
-let pkg = result.package;
+let mapping = PathMapping::try_new([
+    PathMappingRule::try_new("/absolute/project", "project")?,
+])?;
+let config = ScanConfig::new(target, mapping, PreprocessorMode::Builtin)?
+    .entry_header("/absolute/project/include/api.h");
+let report = scan_headers(&config)?;
+let package = report.package();
 ```
 
-## What `scan` really owns
+All source paths are absolute operational paths covered by canonical mapping
+rules. Physical roots are excluded from identity; logical paths and the mapping
+fingerprint are included. Duplicate or overlapping roots are rejected.
 
-The scan path currently owns all of these steps:
+H1 accepts exactly one entry header. Scan separate translation units
+independently so their typedef and file-scope namespaces cannot leak or collide.
 
-1. choose builtin or external preprocessing
-2. build the preprocessing environment
-3. parse the preprocessed translation unit
-4. extract declarations into `parc::ir`
-5. attach input metadata and diagnostics
-6. optionally resolve typedef chains in the produced package
+## Environment policy
 
-That makes it the closest thing PARC has to a “source artifact producer”.
+`EnvironmentPolicy::Hermetic` is the default. `EnvironmentPolicy::captured`
+accepts an explicit sorted set of variable names. Requested-but-unset variables
+are recorded distinctly, non-UTF values are rejected, and the external process
+starts from `env_clear()`.
 
-## ScanConfig
+## Preprocessors
 
-Builder for scan configuration:
+- `Builtin` uses explicit target macros and configured include paths.
+- `External { executable }` requires an absolute file whose content fingerprint
+  equals the compiler executable fingerprint in `TargetSpec`. Recorded argv
+  paths are logical, while physical paths remain operational only.
 
-| Method | Description |
-|---|---|
-| `entry_header(path)` | Add an entry-point header |
-| `include_dir(path)` | Add a preprocessor include search path |
-| `define(name, value)` | Add a preprocessor define with value |
-| `define_flag(name)` | Add a flag-style define (no value) |
-| `with_compiler(cmd)` | Set the external preprocessor command |
-| `with_flavor(flavor)` | Set the parser flavor |
-| `with_builtin_preprocessor()` | Use the built-in preprocessor |
+Both modes honor C11 and C17 target standards. Define and undefine events are
+validated before they can become argv.
 
-## Preprocessing Modes
+## Result and current completeness
 
-### External (default)
+`scan_headers` returns a `ScanReport`; diagnostics live only in its immutable
+package. Current declarations use exact ranges in a generated preprocessed
+`SourceFile` with `SourceOrigin::Generated`. Because original include and macro
+provenance is not yet proven, `PARC-P0001` forces every H1 scan to
+`Completeness::Partial`. Macros and transitive include content are not claimed
+as complete under that state.
 
-Uses `gcc -E` or `clang -E` to preprocess headers. Requires the
-compiler and requested development headers to be installed. PARC delegates
-preprocessing to that tool; this does not guarantee that its parser/extractor
-can represent every declaration in every system header.
-
-### Built-in
-
-Uses `parc::preprocess` directly. This is useful for controlled fixtures and
-repo-local tests. It is not a promise that the built-in preprocessor already
-matches every hostile system-header stack.
-
-## ScanResult
-
-The scan produces:
-
-- `package: SourcePackage` — the extracted declarations and metadata
-- `preprocessed_source: String` — the preprocessed source text
-
-The package is not implicitly complete. Scan records the entry headers,
-include directories, defines, compiler command, and flavor that it observes;
-target triple and compiler version may still be absent, and diagnostics can
-record partial or unsupported declarations.
-
-## Intake
-
-For already-preprocessed source (e.g., output of `gcc -E`), use
-`parc::intake::PreprocessedInput`:
-
-```rust
-use parc::intake::PreprocessedInput;
-
-let input = PreprocessedInput::from_string("int foo(void);")
-    .with_path("output.i")
-    .with_flavor(parc::driver::Flavor::GnuC11);
-
-let pkg = input.extract();
-```
-
-## What to expect from failures
-
-`scan_headers()` can fail early on preprocessing setup problems, and it can
-also return a package with parse diagnostics if preprocessing succeeded but the
-source could not be fully parsed.
-
-That split is intentional:
-
-- operational setup failures are `Err(...)`
-- source-level failures become `package.diagnostics` when possible
+Operational setup errors return `ScanError`. Parser recovery is structured and
+becomes a forcing diagnostic with the skipped generated-source range.

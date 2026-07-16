@@ -1,0 +1,94 @@
+{
+  "declaration_reordering": {
+    "expected_declaration_ids": {
+      "alpha": "pdecl1_8771e81bc20885df71dfe2b4b236c3c96810aa3e116052c7f91e9dfb0c4bf143",
+      "beta": "pdecl1_236b19d30895b78d76f8db25bb46db925b9d0e07a80bf75b59c2d5aefac2561b",
+      "gamma": "pdecl1_4d7c3dc4d31675487b2127c551085051bb720f6f52714ff170372c5998e8adff"
+    },
+    "permutations": [
+      [
+        "alpha",
+        "beta",
+        "gamma"
+      ],
+      [
+        "gamma",
+        "alpha",
+        "beta"
+      ]
+    ]
+  },
+  "duplicate_prototypes": {
+    "declaration": "pdecl1_0dc5dc79b1bb9f6757aec593eefe7061970e7304604747384004cd01f6e7557f",
+    "expected_occurrence_ids": [
+      "pocc1_291a0d4cf37917af4e9602442eb1978b6803e8f05a30ca6d37b829b1c2e8b79c",
+      "pocc1_d88459716b9fdf0f9e1a1dafd12ff1a6b70b6d66de0a4fcdb59b89364996880a"
+    ],
+    "normalized_tokens": [
+      "int",
+      "f",
+      "(",
+      "int",
+      "x",
+      ")",
+      ";"
+    ],
+    "ordinals": [
+      0,
+      1
+    ]
+  },
+  "id_algorithm_version": 1,
+  "logical_root_remapping": {
+    "expected_file_id": "pfile1_69e3e991ae53244537581230fa11e662d9cfac2dffe5a21020f2fd5d8eb8f37f",
+    "inputs": [
+      "include/widget.h",
+      "./include//widget.h"
+    ]
+  },
+  "parameter_name_independence": {
+    "expected_parameter_id": "pchild1_3f8cab098b2413cfe07f12d7aecc87dd657492c16f6a5740debedf326ccfa82a",
+    "ordinal": 0,
+    "prototype_spellings": [
+      "int rename_parameters(int left);",
+      "int rename_parameters(int right);",
+      "int rename_parameters(int);"
+    ]
+  },
+  "same_spelling_multiple_scopes": {
+    "first_file_scope": "pdecl1_eb0bc3a6b3dd64807740a5e672d7573d011ed65f9c37c4c9f00ce19d7fe0fa0f",
+    "logical_headers": [
+      "include/widget.h",
+      "vendor/widget.h"
+    ],
+    "name": "same_spelling",
+    "second_file_scope": "pdecl1_2f641365a1773f096e112c8f27e050f804fe78c1c7e50194e91e861fcaa3d01e",
+    "translation_unit": "pdecl1_cd6a48938f48f05bb8cb3872663dd61feb7c461f1968f44142af3dbd8bea39fc"
+  },
+  "schema": "follang.parc.id-golden-vectors",
+  "typedef_chain": {
+    "chain": [
+      "public_handle",
+      "base_handle"
+    ],
+    "expected_base_declaration_id": "pdecl1_af5fd5bbfd1e665f72d0242311f0e7f70a6677d2e9623858e5a592bfa15bb95e",
+    "expected_public_declaration_id": "pdecl1_eade8f83b0cc90a68158140fca2528834be19bbbee99cf1124a1df1f18665744"
+  },
+  "version": 1,
+  "whitespace_only_token_normalization": {
+    "expected_occurrence_id": "pocc1_291a0d4cf37917af4e9602442eb1978b6803e8f05a30ca6d37b829b1c2e8b79c",
+    "normalized_tokens": [
+      "int",
+      "f",
+      "(",
+      "int",
+      "x",
+      ")",
+      ";"
+    ],
+    "source_spellings": [
+      "int f(int x);",
+      "int   f ( int x ) ;"
+    ]
+  }
+}

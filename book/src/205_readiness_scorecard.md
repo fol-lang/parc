@@ -1,48 +1,39 @@
-# Hardening Evidence Scorecard
+# Readiness Scorecard
 
-This chapter ties PARC readiness to real suites instead of vague confidence
-claims.
+## Current posture
 
-## Overall Posture
+PARC has a strong checked schema-v2 contract and a deterministic public H1
+producer for one explicitly configured translation unit. Parser/AST coverage is
+broader than contract-producing scan coverage.
 
-PARC is in H0 hardening and is not production-certified. Repository tests show
-useful parser, extraction, scan, and failure behavior, but the built-in
-preprocessor is incomplete and current `SourcePackage` construction paths do
-not all populate target, input, macro, and provenance fields. Linux system
-tests are prerequisite-dependent; Apple and Windows have no native CI gate.
+Current scans are intentionally **not complete**: declarations point into a
+generated preprocessed file, the macro table is empty, and original include and
+macro-expansion provenance is unproven. `PARC-P0001` makes that limitation
+machine-checkable.
 
-## Subsystem Scorecard
+## Evidence by subsystem
 
-- parser entrypoints: fixture-backed
-- AST traversal and printing: fixture-backed
-- extraction to `SourcePackage`: fixture-backed, with partial/default fields
-- scan-first vendored baselines: hermetic regression evidence
-- hostile-header recovery: bounded regression evidence
-- built-in preprocessor: incomplete, corpus-scoped evidence
-- system-header wrappers: host- and prerequisite-dependent evidence
-- Apple/Windows: uncertified; no native H0 CI
+| Subsystem | Posture |
+| --- | --- |
+| Contract schema, codec, IDs, and validation | Frozen H1 evidence |
+| Explicit scan configuration and relocation | H1 evidence |
+| Two-pass declaration/type lowering | Focused H1 fixtures; unsupported paths remain diagnostic |
+| Parser, AST traversal, and printing | Broad repository fixtures |
+| Built-in preprocessing | Controlled fixtures; not universal host-header parity |
+| Original include/macro provenance | H2 gap |
+| Complete contract macro inventory | H2 gap |
+| Cross-translation-unit merge semantics | Out of H1 scope |
+| ABI layout, symbols, linking, Rust generation | Downstream ownership |
 
-## Canonical Readiness Anchors
+## What raises readiness
 
-The regression baseline should be checked against these anchors first:
+Readiness increases only when evidence closes a forcing gap, for example:
 
-- vendored musl `stdint`
-- vendored zlib
-- vendored libpng scan
-- repo-owned `macro_env_a`
-- repo-owned `type_env_b`
-- OpenSSL public wrapper extraction
-- combined Linux event-loop wrapper extraction
+- content-addressed transitive include tables;
+- exact macro definition and expansion provenance;
+- compiler-backed parity fixtures tied to explicit target identities;
+- broader adversarial declaration/type preservation;
+- downstream integration using only canonical serialized artifacts.
 
-If those anchors stay green and deterministic, they preserve the current test
-baseline. They do not implement H1-H5 or prove a production contract.
-
-## What Would Raise Readiness Further
-
-The next meaningful gains would be:
-
-- broader built-in-preprocessor coverage on other hostile width and platform
-  gates beyond the libpng family
-- more ugly combined system-header clusters
-- more repeat-run deterministic scans on large host-dependent surfaces
-- clearer unsupported-case diagnostics for the remaining difficult families
+Parser success or a large fixture count alone cannot upgrade a partial scan to
+complete.

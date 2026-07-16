@@ -95,19 +95,27 @@ fn main() -> Result<(), parc::driver::Error> {
 
 ## First useful scan example
 
-If what you really want is source IR rather than a raw AST, start with
+If what you really want is the checked source contract rather than a raw AST, start with
 `parc::scan`:
 
 ```rust
-use parc::scan::{scan_headers, ScanConfig};
+use parc::scan::{
+    scan_headers, PathMapping, PathMappingRule, PreprocessorMode, ScanConfig,
+};
 
-let config = ScanConfig::new().entry_header("demo.h");
-let result = scan_headers(&config).unwrap();
+// `checked_target` is an application-provided, validated TargetSpec.
+let rule = PathMappingRule::try_new(&workspace_root, "workspace")?;
+let mapping = PathMapping::try_new([rule])?;
+let config = ScanConfig::new(checked_target, mapping, PreprocessorMode::Builtin)?
+    .entry_header(workspace_root.join("demo.h"));
+let report = scan_headers(&config)?;
 
-println!("items: {}", result.package.items.len());
+println!("declarations: {}", report.package().declarations().len());
 ```
 
-This is the closest thing PARC has to a “frontend product” API.
+There is no host-derived scan configuration: target identity, path mapping,
+preprocessor mode, environment policy, and the single translation-unit entry
+are explicit inputs.
 
 ## First fragment example
 
@@ -143,7 +151,7 @@ It owns:
 - parsing
 - source extraction
 - source diagnostics
-- the `parc::ir::SourcePackage` artifact
+- the checked `parc::contract::SourcePackage` artifact
 
 It does not own:
 

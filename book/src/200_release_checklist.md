@@ -1,7 +1,6 @@
-# Future Release Checklist
+# Release Checklist
 
-Registry publication and version changes are deferred to H6. This chapter is a
-future release checklist, not a statement that PARC is currently release-ready.
+This chapter is a pragmatic checklist for documentation and parser changes before a release.
 
 The important release posture is architectural:
 
@@ -51,18 +50,17 @@ Before releasing a `SourcePackage` shape change:
 3. confirm cross-crate composition is still described as tests/examples/harness
    work, not library coupling
 
-## Current H0 gate
+## Release gate
 
-The current non-release baseline uses `make build`, `make fmt-check`,
-`make lint`, `make check-features`, `make test`, `make test-contract`,
-`make test-package`, `make test-system`, `make docs-check`, and `make verify`.
-The system lane is optional for the standalone local command but required by
-`make verify` and required CI. Passing these commands establishes H0 feedback;
-it does not establish H1-H5 contract or platform certification.
+`parc` is ready to release only when:
 
-Before any H6 publication decision, re-audit the versioned source artifact,
-package metadata, legal files, canonical consumers, and certified target
-matrix. Do not infer release readiness from the old corpus list.
+- `make verify` passes from a clean worktree with system prerequisites required
+- `make test-contract` matches the frozen schema-v2 corpus
+- every filtered system lane proves that it selected at least one test
+- `make test-package` validates the archive and a clean consumer
+- repeated scans of the same explicit inputs have identical package bytes and IDs
+- the book still teaches `parc` as the source-meaning crate
+- unsupported or partial source behavior is still documented honestly
 
 ## Final practical rule
 

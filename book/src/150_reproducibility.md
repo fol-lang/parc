@@ -18,11 +18,11 @@ The biggest sources of drift are:
 
 For durable automation:
 
-1. prefer explicit `Config` values over ambient defaults in CI
-2. pin include paths with `-I...` when they matter
-3. use `-nostdinc` for isolated fixture testing when appropriate
-4. keep preprocessed snapshots for hard parser regressions
-5. keep the parser flavor explicit in tests
+1. construct scan `TargetSpec` from checked compiler and data-model evidence
+2. map every absolute operational path to a canonical logical path
+3. use `EnvironmentPolicy::Hermetic` or capture named variables explicitly
+4. fingerprint-check an external preprocessor against `TargetSpec`
+5. keep preprocessed snapshots for syntax-only parser regressions
 
 ## Deterministic parse debugging
 
@@ -46,10 +46,10 @@ output. For parser bugs that depend on preprocessing, a pinned `.i` file is ofte
 
 If PARC is part of a larger pipeline, keep the following recorded somewhere durable:
 
-- preprocessor executable
-- preprocessor arguments
-- flavor
+- target and compiler fingerprints
+- logical path mapping and preprocessor arguments
+- environment policy and captured-variable fingerprints
 - representative fixtures
-- expected parse outcome
+- expected package fingerprint, completeness, and diagnostics
 
 Without that context, debugging parser regressions is much slower.

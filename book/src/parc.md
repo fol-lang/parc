@@ -1,89 +1,36 @@
 # PARC Reference
 
-PARC is the source frontend of the toolchain. The real crate surface today is:
+PARC is the source frontend of the toolchain. It has two public surfaces:
 
-- preprocessing through both external-driver and built-in paths
-- C parsing into a typed AST
-- extraction into a durable source IR
-- header scanning that goes straight to `SourcePackage`
-- AST-oriented support APIs such as visiting, spans, locations, and printing
+1. `scan` and `contract` for checked source artifacts;
+2. `driver`, `parse`, `ast`, and `visit` for syntax-level tooling.
 
-PARC is in H0 hardening and is not production-certified. The built-in
-preprocessor is a scoped implementation, and `SourcePackage` fields are only
-as complete as the entrypoint and observations that populated them. See
-[Hardening Status](./005_hardening_status.md) before treating a fixture-backed
-behavior as a supported platform or contract guarantee.
-
-That means the crate serves two audiences at once:
-
-1. downstream tools that want `parc::ir::SourcePackage`
-2. parser-facing tools that want direct AST access
-
-## What PARC Owns
-
-- preprocessing
-- parsing
-- parser recovery
-- source extraction
-- source diagnostics and provenance
-- source IR
-- header scanning
-- AST traversal and debug support
-
-## What PARC Does Not Own
-
-- symbol inventories
-- binary validation
-- link-plan construction
-- Rust lowering or crate emission
-
-## Actual Data Flow
+## Data flow
 
 ```text
-raw source / headers
-  -> driver or built-in preprocessor
-  -> parser AST
-  -> extraction
-  -> SourcePackage
-  -> version-1 source artifact or downstream harness
+one entry header + explicit TargetSpec + explicit source inputs
+  -> builtin or checked external preprocessing
+  -> resilient parser
+  -> internal deterministic lowering
+  -> checked contract::SourcePackage
+  -> canonical schema-v2 artifact
 ```
 
-`scan` short-circuits that flow into one high-level operation. `parse` and
-`driver` expose earlier stages for syntax-level consumers.
+There is no public AST-to-contract shortcut. Contract construction needs the
+target, effective preprocessing inputs, source table, diagnostics, and
+completeness proof assembled together.
 
-## Module Layout
+## Ownership
 
-| Module | What it is actually for |
-| --- | --- |
-| `driver` | file-oriented parse flow using an external preprocessor |
-| `preprocess` | built-in preprocessing, tokenization, include resolution |
-| `parse` | fragment parsing and direct translation-unit parsing from strings |
-| `scan` | end-to-end header scanning into `SourcePackage` |
-| `extract` | AST-to-IR lowering and normalization |
-| `ir` | durable PARC-owned source contract |
-| `ast` | syntax tree for parser-facing consumers |
-| `visit` | traversal hooks over the AST |
-| `span` / `loc` | source-position helpers |
-| `print` | debug-oriented AST printer |
-| `intake` | already-preprocessed source intake helpers |
+PARC owns preprocessing, parsing, source declarations and types, source
+diagnostics, provenance, and artifact identity. LINC owns measured ABI and
+binary evidence. GERC owns Rust lowering and generated build output.
 
-## Boundary
+The strongest consumer boundary is `parc::contract::SourcePackage`. The former
+`ir` and `intake` modules are not compatibility paths.
 
-The current consumer boundary is `parc::ir::SourcePackage`. It is not yet the
-frozen H1 contract and is not guaranteed to carry populated target, input,
-macro, or provenance fields from every construction path.
+## Reading strategy
 
-That is the point where PARC stops owning the problem. Anything involving
-binary evidence or Rust generation is downstream from PARC, even if tests and
-harnesses compose those crates together elsewhere.
-
-## Reading Strategy
-
-Read the book in one of these orders:
-
-1. source-contract path:
-   `Getting Started -> Source IR -> Extraction -> Header Scanning -> API Contract`
-2. parser-facing path:
-   `Getting Started -> Driver API -> Parser API -> AST Model -> Visitor Pattern`
-3. contributor/debug path:
-   `Project Layout -> Testing -> Diagnostics And Printing -> Parser Boundaries`
+- Contract consumers: Source Contract, Header Scanning, API Contract.
+- Parser consumers: Driver API, Parser API, AST Model, Visitor Pattern.
+- Contributors: Project Layout, Testing, Parser Boundaries.

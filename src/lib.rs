@@ -1,13 +1,13 @@
-//! C language frontend: preprocessing, parsing, and source-level semantic extraction.
+//! C language frontend: preprocessing, parsing, and checked source contracts.
 //!
 //! This crate is the frontend stage of the PARC pipeline. It owns:
 //!
 //! - **Preprocessing**: built-in C preprocessor with macro expansion,
 //!   conditional compilation, include resolution, and predefined target macros.
 //! - **Parsing**: C11 parser with GNU and Clang extensions, producing a typed AST.
-//! - **Extraction**: source-level declaration normalization into a durable IR
+//! - **Contract lowering**: deterministic, crate-private AST normalization
 //!   suitable for downstream consumption by linker and codegen stages.
-//! - **Source IR**: a serializable frontend contract (`SourcePackage`) that
+//! - **Source contract**: a serializable checked package (`SourcePackage`) that
 //!   captures functions, records, enums, typedefs, variables, macros,
 //!   diagnostics, and provenance — independent of parser internals.
 //!
@@ -22,12 +22,12 @@
 
 #![allow(deprecated)]
 #![allow(ellipsis_inclusive_range_patterns)]
+#![forbid(unsafe_code)]
 
 pub mod ast;
+pub mod contract;
 pub mod driver;
-pub mod extract;
-pub mod intake;
-pub mod ir;
+mod extract;
 pub mod loc;
 pub mod parse;
 pub mod preprocess;

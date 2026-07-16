@@ -4,8 +4,8 @@ use crate::env::Env;
 use crate::parser;
 use crate::span::Node;
 
-pub use crate::parser::ParseError;
 pub use crate::parser::ParseResult;
+pub use crate::parser::{ParseError, RecoveredTranslationUnit, RecoveryError};
 
 fn env_for(flavor: Flavor) -> Env {
     match flavor {
@@ -40,7 +40,7 @@ pub fn translation_unit(source: &str, flavor: Flavor) -> ParseResult<Translation
     parser::translation_unit(source, &mut env)
 }
 
-pub fn translation_unit_resilient(source: &str, flavor: Flavor) -> TranslationUnit {
+pub fn translation_unit_resilient(source: &str, flavor: Flavor) -> RecoveredTranslationUnit {
     let mut env = env_for(flavor);
     parser::translation_unit_resilient(source, &mut env)
 }
