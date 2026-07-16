@@ -7,7 +7,7 @@ use std::{fs, str};
 fn run_script(test_name: &str, args: &[&str]) -> Option<String> {
     if !super::system_support::begin_system_test(
         test_name,
-        super::system_support::command_available("sh"),
+        super::system_support::posix_sh_available(),
         "POSIX sh",
     ) {
         return None;

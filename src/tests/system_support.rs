@@ -44,3 +44,10 @@ pub(crate) fn command_available(command: &str) -> bool {
         Err(_) => false,
     }
 }
+
+pub(crate) fn posix_sh_available() -> bool {
+    std::process::Command::new("sh")
+        .args(["-c", ":"])
+        .status()
+        .is_ok_and(|status| status.success())
+}
