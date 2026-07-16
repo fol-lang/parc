@@ -1,68 +1,70 @@
-# Release Checklist
+# Release Policy and Checklist
 
-This chapter is a pragmatic checklist for documentation and parser changes before a release.
+The root `RELEASE.md`, which is included in the package archive, is the
+normative distribution policy. This chapter summarizes the repository checks.
 
-The important release posture is architectural:
+## Identity and compatibility
 
-- `parc` releases source/frontend behavior
-- it does not release binary or Rust-generation policy
-- the tested `SourcePackage` contract matters more than parser-internal churn
+The current identities are:
 
-## Parser changes
+- package `follang-parc` 0.16.0, imported as `parc`;
+- MSRV Rust 1.89;
+- source schema `follang.parc.source-package` version 2;
+- ID algorithm version 1;
+- H2 implementation baseline
+  `9585c5977e73795f71d7844bb179f1a2ba613c83`;
+- no PARC/LINC/GERC dependency, because PARC is the first sibling released.
 
-Before releasing parser changes:
+Registry publication is disabled. The project does not claim crates.io name
+ownership or availability. Distribution uses an exact Git tag and its tested
+self-contained Cargo archive.
 
-1. confirm the smallest reproducer has a test
-2. confirm the intended flavor coverage is tested
-3. confirm the AST shape change is deliberate
-4. confirm visitor and printer behavior still make sense
+Rust API/behavior changes follow SemVer. Before 1.0, breaking changes require a
+minor bump. Frozen schema v2 is never changed in place: incompatible artifact
+changes require a new schema, corpus, and breaking SemVer bump. ID
+normalization/domain/input changes require a new ID algorithm, golden vectors,
+schema, and breaking SemVer bump because IDs are serialized. A patch release
+does not raise the MSRV; detailed pre/post-1.0 rules are in `RELEASE.md`.
 
-## Book changes
+## Change review
 
-Before releasing documentation changes:
+Before a release candidate:
 
-1. confirm the affected public behavior is described in the book
-2. confirm unsupported or out-of-scope cases are still documented honestly
-3. confirm examples still match the actual public API names
+1. put parser changes behind the smallest relevant API/reftest fixture;
+2. cover contract meaning, canonical bytes, IDs, validation, or completeness in
+   contract tests and the frozen corpus as applicable;
+3. keep visitor/printer and book descriptions aligned with intentional AST/API
+   changes;
+4. retain structured fail-closed diagnostics for unsupported source behavior;
+5. confirm the book still limits certification to the H2 source frontend.
 
-## Error-surface changes
+## Candidate gate
 
-Before releasing changes around errors:
+The operator must first fetch and review the tracked upstream and tags. On a
+clean branch whose `HEAD` exactly equals its tracked upstream, run:
 
-1. confirm structured fields still provide the needed information
-2. avoid treating formatted strings as the real contract
-3. update the error-surface chapter if the practical behavior changed
+```sh
+make release-check
+```
 
-## Workflow changes
+The target refuses detached, dirty, untracked, non-upstream, already-tagged, or
+registry-publishable state, then runs the full `make verify` gate. It is
+non-mutating: it does not fetch, edit a version, commit, tag, push, upload, or
+publish.
 
-Before releasing changes to the normal integration path:
+The full gate proves:
 
-1. update the workflow chapter
-2. update the API contract chapter if the preferred boundary changed
-3. update stable-usage guidance if downstream posture should change
+- formatting, Clippy, feature combinations, repository tests, and doctests;
+- frozen schema-v2 corpus and scan preservation;
+- required compiler-dependent evidence with no zero-test filter;
+- candidate archive default tests/doctests and a clean packaged consumer;
+- mdBook and Rust API documentation;
+- no worktree change during verification.
 
-## Artifact contract changes
+## Dependency order
 
-Before releasing a `SourcePackage` shape change:
-
-1. confirm the changed field meaning is covered by contract-level tests
-2. confirm the consuming workflow examples still describe artifact boundaries
-3. confirm cross-crate composition is still described as tests/examples/harness
-   work, not library coupling
-
-## Release gate
-
-`parc` is ready to release only when:
-
-- `make verify` passes from a clean worktree with system prerequisites required
-- `make test-contract` matches the frozen schema-v2 corpus
-- every filtered system lane proves that it selected at least one test
-- `make test-package` validates the archive and a clean consumer
-- repeated scans of the same explicit inputs have identical package bytes and IDs
-- the book still teaches `parc` as the source-meaning crate
-- unsupported or partial source behavior is still documented honestly
-
-## Final practical rule
-
-If a change would force a downstream PARC consumer to rethink how it parses, traverses, or reports
-on source, the book should say so explicitly in the same change.
+Record the full PARC tag commit, package version, schema version, and ID
+algorithm version before downstream tagging. Then release/tag LINC against that
+exact PARC state, GERC against both exact upstream states, and finally update
+FOL's lock. Never tag a downstream crate against uncommitted or local-only
+upstream state.

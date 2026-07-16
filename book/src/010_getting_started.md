@@ -15,10 +15,17 @@ harnesses.
 
 ## Add the crate
 
+For a repository development checkout, spell both package and library
+identities explicitly:
+
 ```toml
 [dependencies]
-parc = { path = "../parc" }
+parc = { package = "follang-parc", path = "../parc" }
 ```
+
+Registry publication is disabled. Released consumers must use the exact tested
+Git tag/archive described by the release policy rather than inventing a
+registry version or following an unpinned branch.
 
 ## Pick the right API first
 

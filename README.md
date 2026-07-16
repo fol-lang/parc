@@ -4,8 +4,8 @@ PARC is the C source frontend for the FOL toolchain. It preprocesses and parses
 one explicitly configured translation unit and produces the checked schema-v2
 source contract consumed by later stages.
 
-The Cargo package is `follang-parc`; Rust code imports it as `parc`. The crate
-requires Rust 1.89 or newer.
+The package identity is `follang-parc` version 0.16.0; Rust code imports it as
+`parc`. The minimum supported Rust version (MSRV) is 1.89.
 
 ## Public boundaries
 
@@ -82,6 +82,26 @@ make docs-check
 
 `make verify` runs the full non-mutating release gate and requires all system
 prerequisites. See the book for the contract and parser details.
+
+The three Cargo features are repository test switches, not consumer capability
+flags: `repo-tests` selects repository fixtures, `system-tests` selects declared
+compiler/header prerequisites, and `dev-pegviz` adds local reference-test
+tracing. The packaged archive promises its default library tests and doctests;
+repository-only fixtures are deliberately not included.
+
+## Distribution and compatibility
+
+Registry publication is disabled (`publish = false`). The project does not
+claim that the `follang-parc` name is owned or available on crates.io. Release
+candidates are self-contained Cargo archives made from synchronized Git tags;
+downstream siblings pin the exact tag commit in PARC -> LINC -> GERC -> FOL
+order. `make release-check` is a non-mutating eligibility check and never bumps,
+tags, pushes, or publishes anything.
+
+The current source artifact is schema `follang.parc.source-package` version 2,
+with ID algorithm version 1. Rust SemVer, schema/ID bump rules, MSRV policy, the
+exact H2 baseline, and the clean-upstream release procedure are recorded in
+[`RELEASE.md`](RELEASE.md).
 
 ## License
 

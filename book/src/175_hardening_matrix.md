@@ -11,7 +11,7 @@ original macro provenance.
 | Frozen contract corpus | Canonical schema-v2 bytes, IDs, target/source fingerprints, decoder and validation invariants |
 | Scan-contract tests | Explicit target/path/environment configuration, two-pass lowering, ranges, diagnostics, relocation, and recovery |
 | Parser API and reftests | Grammar, AST, visitor, and printer behavior |
-| Package test | Published archive plus a clean downstream consumer |
+| Package test | Candidate archive default tests/doctests plus a clean downstream consumer |
 
 `make test-contract` is the focused contract lane. `make test` adds repository
 fixtures and doctests. Neither may rely on ambient C include variables.

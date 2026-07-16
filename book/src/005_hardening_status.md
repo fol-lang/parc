@@ -8,11 +8,14 @@ host-header or whole-toolchain certification.
 
 | Item | Current value |
 | --- | --- |
-| Distribution package | `follang-parc` |
+| Distribution package | `follang-parc` 0.16.0 (`publish = false`) |
 | Rust library/import name | `parc` |
 | Declared MSRV | Rust 1.89 |
 | Source artifact schema | `follang.parc.source-package`, version 2 |
+| ID algorithm | version 1 |
 | Public producer | `parc::scan::scan_headers` |
+| Certified implementation baseline | `9585c5977e73795f71d7844bb179f1a2ba613c83` (H2) |
+| Sibling dependencies | none; PARC is released first |
 
 ## Evidence boundary
 
@@ -46,10 +49,14 @@ construct a source contract.
 | `make test` | Repository tests and doctests |
 | `make test-contract` | Frozen contract corpus and scan preservation |
 | `make test-contract-system` | Required GCC enum and GCC/Clang differential evidence |
-| `make test-package` | Package archive and clean-consumer check |
+| `make test-package` | Candidate package archive and clean-consumer check |
 | `make test-system` | Compiler/header-dependent test group |
 | `make docs-check` | mdBook and Rust API documentation |
 | `make verify` | Full clean-worktree gate |
 
 System lanes support optional and required prerequisite modes. Release evidence
 must use required mode; a skip is not a pass.
+
+Registry publication is disabled and no crates.io availability claim is made.
+See the release-policy chapter for SemVer, schema/ID, MSRV, archive, exact
+revision, and clean-upstream rules.

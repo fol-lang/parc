@@ -26,6 +26,6 @@
   - [Support Tiers](./180_support_tiers.md)
   - [Hardening Matrix](./175_hardening_matrix.md)
   - [Parser Boundaries](./190_parser_boundaries.md)
-  - [Release Checklist](./200_release_checklist.md)
+  - [Release Policy and Checklist](./200_release_checklist.md)
   - [Readiness Scorecard](./205_readiness_scorecard.md)
-- [Migration From bic](./210_migration_from_bic.md)
+- [Contract Migration](./210_contract_migration.md)

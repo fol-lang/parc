@@ -23,7 +23,13 @@ make docs-check
 `make test` enables `repo-tests`, clears ambient C include variables, and also
 runs doctests. `make test-contract` is the focused, hermetic preservation lane
 for the frozen contract corpus and scan lowering. `make test-package` checks the
-published archive in a clean consumer.
+candidate archive's default tests and doctests, then tests a clean consumer
+against the unpacked `follang-parc` identity.
+
+`repo-tests`, `system-tests`, and `dev-pegviz` are repository harness switches,
+not consumer capabilities. Their fixture trees are intentionally outside the
+package include list. The archive promises the default library tests and
+doctests exercised by `make test-package`, not the repository-only lanes.
 
 ## System-dependent lanes
 

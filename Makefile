@@ -1,7 +1,5 @@
-PROJECT_NAME := $(shell grep '^name = ' Cargo.toml | sed -E 's/name = "(.*)"/\1/')
-PROJECT_CAP  := $(shell echo $(PROJECT_NAME) | tr '[:lower:]' '[:upper:]')
+PROJECT_NAME := $(shell sed -n 's/^name = "\(.*\)"/\1/p' Cargo.toml | head -n 1)
 CURRENT_VERSION := $(shell grep '^version = ' Cargo.toml | sed -E 's/version = "(.*)"/\1/')
-LATEST_TAG   ?= $(shell git describe --tags --abbrev=0 2>/dev/null)
 TOP_DIR      := $(CURDIR)
 BUILD_DIR    := $(TOP_DIR)/target
 
@@ -14,7 +12,7 @@ $(info Project: $(PROJECT_NAME))
 $(info Version: $(CURRENT_VERSION))
 $(info ------------------------------------------)
 
-.PHONY: build b compile c fmt fmt-check lint lint-fix check-features test t test-contract test-contract-system test-package test-system docs-check verify help h clean docs release
+.PHONY: build b compile c fmt fmt-check lint lint-fix check-features test t test-contract test-contract-system test-package test-system docs-check verify release-check help h clean docs
 
 SHELL := /bin/bash
 
@@ -118,8 +116,8 @@ help:
 	@echo "  test-system    Run prerequisite-dependent system tests"
 	@echo "  docs-check     Build Rust and mdBook documentation"
 	@echo "  verify         Run the complete non-mutating gate"
+	@echo "  release-check  Verify clean, upstream-synchronized release eligibility"
 	@echo "  docs         Build documentation (TYPE=mdbook|doxygen)"
-	@echo "  release      Create a new release (TYPE=patch|minor|major)"
 	@echo
 
 h : help
@@ -138,16 +136,37 @@ else
 	$(error Invalid documentation type. Use 'make docs TYPE=mdbook' or 'make docs TYPE=doxygen')
 endif
 
-TYPE ?= patch
-HAS_REL := $(shell command -v git-rel 2>/dev/null)
-
-release:
-	@if [ -z "$(HAS_REL)" ]; then \
-		echo "git-rel is not installed. Please install it first."; \
-		exit 1; \
-	fi
-	@if [ -z "$(TYPE)" ]; then \
-		echo "Release type not specified. Use 'make release TYPE=[patch|minor|major|m.m.p]'"; \
-		exit 1; \
-	fi
-	@git rel $(TYPE)
+release-check:
+	@set -eu; \
+		branch="$$(git symbolic-ref --quiet --short HEAD)" || { \
+			echo "release check requires a branch checkout, not detached HEAD"; \
+			exit 1; \
+		}; \
+		upstream="$$(git rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' 2>/dev/null)" || { \
+			echo "release check requires an upstream for $$branch"; \
+			exit 1; \
+		}; \
+		test -z "$$(git status --porcelain=v1 --untracked-files=all)" || { \
+			echo "release check requires a clean worktree"; \
+			exit 1; \
+		}; \
+		head="$$(git rev-parse HEAD)"; \
+		upstream_head="$$(git rev-parse "$$upstream")"; \
+		test "$$head" = "$$upstream_head" || { \
+			echo "release check requires HEAD to equal $$upstream"; \
+			echo "HEAD:     $$head"; \
+			echo "upstream: $$upstream_head"; \
+			exit 1; \
+		}; \
+		tag="follang-parc-v$(CURRENT_VERSION)"; \
+		! git rev-parse --quiet --verify "refs/tags/$$tag" >/dev/null || { \
+			echo "release tag already exists: $$tag"; \
+			exit 1; \
+		}; \
+		grep -Fqx 'publish = false' Cargo.toml || { \
+			echo "registry publication must remain disabled"; \
+			exit 1; \
+		}; \
+		$(MAKE) verify; \
+		echo "release candidate is eligible: $$tag at $$head"; \
+		echo "release-check is non-mutating; follow RELEASE.md to create an archive/tag"

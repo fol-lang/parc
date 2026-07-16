@@ -16,7 +16,23 @@ test -f "$archive"
 tar -xzf "$archive" -C "$scratch"
 package_dir="$scratch/${package_name}-${version}"
 
-cargo test --manifest-path "$package_dir/Cargo.toml"
+test -f "$package_dir/README.md"
+test -f "$package_dir/RELEASE.md"
+test -f "$package_dir/LICENSE-MIT"
+test -f "$package_dir/LICENSE-APACHE"
+grep -Fqx "name = \"${package_name}\"" "$package_dir/Cargo.toml.orig"
+grep -Fqx "version = \"${version}\"" "$package_dir/Cargo.toml.orig"
+grep -Fqx "name = \"${crate_name}\"" "$package_dir/Cargo.toml.orig"
+grep -Fqx 'rust-version = "1.89"' "$package_dir/Cargo.toml.orig"
+grep -Fqx 'license = "MIT OR Apache-2.0"' "$package_dir/Cargo.toml.orig"
+grep -Fqx 'publish = false' "$package_dir/Cargo.toml.orig"
+if grep -Eq '(^|[[:space:]])path[[:space:]]*=' "$package_dir/Cargo.toml.orig"; then
+    echo "packaged manifest contains a path dependency" >&2
+    exit 1
+fi
+
+cargo test --locked --lib --manifest-path "$package_dir/Cargo.toml"
+cargo test --locked --doc --manifest-path "$package_dir/Cargo.toml"
 
 mkdir -p "$scratch/consumer/src"
 cat >"$scratch/consumer/Cargo.toml" <<EOF
@@ -30,10 +46,29 @@ publish = false
 ${crate_name} = { package = "${package_name}", path = "${package_dir}" }
 EOF
 cat >"$scratch/consumer/src/lib.rs" <<EOF
-use ${crate_name} as _;
+use ${crate_name}::contract::{
+    ID_ALGORITHM_VERSION, SOURCE_PACKAGE_SCHEMA_ID, SOURCE_PACKAGE_SCHEMA_VERSION,
+};
 
-pub fn packaged_dependency_compiles() -> bool {
-    true
+pub fn packaged_identity() -> (&'static str, u32, u16) {
+    (
+        SOURCE_PACKAGE_SCHEMA_ID,
+        SOURCE_PACKAGE_SCHEMA_VERSION,
+        ID_ALGORITHM_VERSION,
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::packaged_identity;
+
+    #[test]
+    fn consumes_the_packaged_contract_identity() {
+        assert_eq!(
+            packaged_identity(),
+            ("follang.parc.source-package", 2, 1),
+        );
+    }
 }
 EOF
-cargo check --manifest-path "$scratch/consumer/Cargo.toml"
+cargo test --manifest-path "$scratch/consumer/Cargo.toml"

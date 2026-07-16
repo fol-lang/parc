@@ -1,47 +1,41 @@
 # Support Tiers
 
-This chapter records a practical support posture for PARC’s public surface.
+Support claims follow evidence boundaries. Public Rust visibility by itself is
+not a claim that a surface belongs to the certified H2 source contract.
 
-It is meant to help downstream users judge which parts of the crate are the safest long-term
-integration points.
+## Tier 1: Checked source-contract surface
 
-## Tier 1: Core Consumer Surface
+The preferred downstream interop boundary is:
 
-These are the most important public surfaces to depend on:
+- `scan::{ScanConfig, scan_headers}` for explicit-target production;
+- immutable values under `contract`;
+- `contract::{encode_source_package, decode_source_package}` for transport;
+- completeness, per-declaration support, diagnostics, selection, `retain`, and
+  `merge` checks before consumption.
 
-- `driver`
-- `parse`
-- `ast`
-- `visit`
-- `span`
-- `loc`
+This tier has the schema-v2 corpus, canonical IDs/fingerprints, bounded H2 scan
+evidence, and fail-closed validation described by the hardening matrix. It does
+not include ABI layout, symbols, providers, link plans, or Rust generation.
 
-These modules define the main parsing contract of the crate.
+## Tier 2: Syntax-oriented public surface
 
-## Tier 2: Debugging And Inspection Surface
+The parser-oriented modules `driver`, `parse`, `ast`, `visit`, `span`, and `loc`
+remain public and have repository fixture coverage. `print` is useful for AST
+inspection. These APIs do not create a `SourcePackage`, and successful parsing
+does not upgrade an incomplete contract-producing scan to complete.
 
-These are public and useful, but more inspection-oriented than contract-critical:
+Consumers that need the checked cross-crate source boundary should stay on Tier
+1 instead of rebuilding source meaning from these syntax APIs.
 
-- `print`
-- `Debug` views of AST nodes
-- formatted error text
+## Tier 3: Repository implementation detail
 
-They are valuable for debugging and tests, but long-lived tooling should still prefer structured
-data over formatted strings.
+The following are contributor details, not downstream contracts:
 
-## Tier 3: Contributor-Oriented Knowledge
+- parser file organization under `src/parser/`;
+- the crate-private extractor and canonical wire DTOs;
+- repository test features and fixture layout;
+- incidental helper-module names and internal decomposition.
 
-These are important for contributors but should not be treated as downstream contracts:
-
-- parser file organization under `src/parser/`
-- helper-module layout
-- incidental internal naming
-- current implementation decomposition across grammar files
-
-These details may evolve as the parser changes.
-
-## Consumer guidance
-
-If you are building external tooling on top of PARC, bias toward Tier 1 surfaces first.
-Reach for Tier 2 when you need diagnostics or debugging support.
-Treat Tier 3 as implementation detail unless you are actively contributing to PARC itself.
+Rust API compatibility for public surfaces follows `RELEASE.md`. Schema and ID
+compatibility use their own explicit versions; package SemVer never substitutes
+for checking artifact versions and completeness.
