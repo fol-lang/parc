@@ -21,9 +21,13 @@ struct Fixture {
 impl Fixture {
     fn new(label: &str, source: &str) -> Self {
         let ordinal = FIXTURE_ORDINAL.fetch_add(1, Ordering::Relaxed);
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("system time should follow the Unix epoch")
+            .as_nanos();
         let root = std::env::temp_dir().join(format!(
-            "parc-h2-scan-{label}-{}-{ordinal}",
-            std::process::id()
+            "parc-h2-scan-{label}-{}-{ordinal}-{nonce}",
+            std::process::id(),
         ));
         std::fs::create_dir_all(&root).expect("create scan fixture root");
         let header = root.join("api.h");
@@ -1253,8 +1257,12 @@ fn certified_builtin_and_gcc_clang_external_scans_agree_or_report_exact_differen
         certified_requested_target("x86_64-linux-gnu"),
         Some("x86_64-unknown-linux-gnu")
     );
+    assert_eq!(
+        certified_requested_target("x86_64-pc-linux-gnu"),
+        Some("x86_64-unknown-linux-gnu")
+    );
     for unsupported in [
-        "x86_64-pc-linux-gnu",
+        "x86_64-redhat-linux-gnu",
         "amd64-linux-gnu",
         "aarch64-linux-gnu",
     ] {
@@ -1561,7 +1569,9 @@ fn system_compiler_target(executable: &std::path::Path, family: CompilerFamily) 
 #[cfg(feature = "system-tests")]
 fn certified_requested_target(reported: &str) -> Option<&'static str> {
     match reported {
-        "x86_64-unknown-linux-gnu" | "x86_64-linux-gnu" => Some("x86_64-unknown-linux-gnu"),
+        "x86_64-unknown-linux-gnu" | "x86_64-linux-gnu" | "x86_64-pc-linux-gnu" => {
+            Some("x86_64-unknown-linux-gnu")
+        }
         _ => None,
     }
 }

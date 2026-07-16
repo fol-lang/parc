@@ -1404,13 +1404,15 @@ fn validate_compiler_identity(
     }
 }
 
-/// Preserve the compiler's actual reported identity while accepting the one
-/// GNU x86-64 spelling pair whose omitted `unknown` vendor is semantically
-/// identical to the canonical contract triple.  This is intentionally
-/// one-way and closed; no general target normalization or guessing occurs.
+/// Preserve the compiler's actual reported identity while accepting the exact
+/// GNU x86-64 spellings emitted by the certified GCC and Clang toolchains.
+/// Their omitted or `pc` vendor is semantically identical to the canonical
+/// `unknown` vendor. This is intentionally one-way and closed; no general
+/// target normalization or guessing occurs.
 fn compiler_reported_target_matches(reported: &str, requested: &str) -> bool {
     reported == requested
-        || (reported == "x86_64-linux-gnu" && requested == "x86_64-unknown-linux-gnu")
+        || (matches!(reported, "x86_64-linux-gnu" | "x86_64-pc-linux-gnu")
+            && requested == "x86_64-unknown-linux-gnu")
 }
 
 struct ParsedTargetTriple<'a> {
@@ -2049,15 +2051,17 @@ mod tests {
     }
 
     #[test]
-    fn canonical_x86_64_gnu_target_preserves_the_exact_known_compiler_alias() {
+    fn canonical_x86_64_gnu_target_preserves_exact_known_compiler_aliases() {
         let canonical = TargetSpec::try_new(lp64_parts()).expect("canonical target");
-        let mut alias_parts = lp64_parts();
-        alias_parts.compiler = compiler("x86_64-linux-gnu");
-        let alias = TargetSpec::try_new(alias_parts).expect("known GNU alias");
+        for reported in ["x86_64-linux-gnu", "x86_64-pc-linux-gnu"] {
+            let mut alias_parts = lp64_parts();
+            alias_parts.compiler = compiler(reported);
+            let alias = TargetSpec::try_new(alias_parts).expect("known GNU alias");
 
-        assert_eq!(alias.triple(), "x86_64-unknown-linux-gnu");
-        assert_eq!(alias.compiler().reported_target(), "x86_64-linux-gnu");
-        assert_ne!(alias.fingerprint(), canonical.fingerprint());
+            assert_eq!(alias.triple(), "x86_64-unknown-linux-gnu");
+            assert_eq!(alias.compiler().reported_target(), reported);
+            assert_ne!(alias.fingerprint(), canonical.fingerprint());
+        }
     }
 
     #[test]
@@ -2068,7 +2072,7 @@ mod tests {
         ));
         for reported in [
             "amd64-linux-gnu",
-            "x86_64-pc-linux-gnu",
+            "x86_64-redhat-linux-gnu",
             "aarch64-linux-gnu",
         ] {
             let mut parts = lp64_parts();
