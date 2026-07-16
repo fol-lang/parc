@@ -28,11 +28,11 @@ pub struct Printer<'a> {
 
 impl<'a> Printer<'a> {
     pub fn new(w: &mut dyn fmt::Write) -> Printer<'_> {
-        Printer { w: w, offset: 0 }
+        Printer { w, offset: 0 }
     }
 
     fn block(&mut self) -> Printer<'_> {
-        writeln!(&mut self.w, "").unwrap();
+        writeln!(&mut self.w).unwrap();
         Printer {
             w: &mut self.w,
             offset: self.offset + 1,
@@ -64,12 +64,9 @@ impl<'ast, 'a> Visit<'ast> for Printer<'a> {
     }
     fn visit_constant(&mut self, n: &'ast Constant, span: &'ast Span) {
         self.name("Constant");
-        match *n {
-            Constant::Character(ref c) => {
-                self.field("Character");
-                self.field(c);
-            }
-            _ => {}
+        if let Constant::Character(ref c) = *n {
+            self.field("Character");
+            self.field(c);
         }
 
         visit_constant(&mut self.block(), n, span);
@@ -552,7 +549,7 @@ impl<'ast, 'a> Visit<'ast> for Printer<'a> {
     }
 }
 
-fn print_float_format<'ast>(p: &mut Printer, n: &'ast FloatFormat) {
+fn print_float_format(p: &mut Printer, n: &FloatFormat) {
     match *n {
         FloatFormat::Float => p.w.write_str(" Float").unwrap(),
         FloatFormat::Double => p.w.write_str(" Double").unwrap(),
@@ -560,13 +557,12 @@ fn print_float_format<'ast>(p: &mut Printer, n: &'ast FloatFormat) {
         _ => {}
     }
 }
-fn print_declarator_kind<'ast>(p: &mut Printer, n: &'ast DeclaratorKind) {
-    match *n {
-        DeclaratorKind::Abstract => p.w.write_str(" Abstract").unwrap(),
-        _ => {}
+fn print_declarator_kind(p: &mut Printer, n: &DeclaratorKind) {
+    if *n == DeclaratorKind::Abstract {
+        p.w.write_str(" Abstract").unwrap()
     }
 }
-fn print_derived_declarator<'ast>(p: &mut Printer, n: &'ast DerivedDeclarator) {
+fn print_derived_declarator(p: &mut Printer, n: &DerivedDeclarator) {
     match *n {
         DerivedDeclarator::Pointer(_) => p.w.write_str(" Pointer").unwrap(),
         DerivedDeclarator::KRFunction(_) => p.w.write_str(" KRFunction").unwrap(),
@@ -574,7 +570,7 @@ fn print_derived_declarator<'ast>(p: &mut Printer, n: &'ast DerivedDeclarator) {
         _ => {}
     }
 }
-fn print_array_size<'ast>(p: &mut Printer, n: &'ast ArraySize) {
+fn print_array_size(p: &mut Printer, n: &ArraySize) {
     match *n {
         ArraySize::Unknown => p.w.write_str(" Unknown").unwrap(),
         ArraySize::VariableUnknown => p.w.write_str(" VariableUnknown").unwrap(),
@@ -582,7 +578,7 @@ fn print_array_size<'ast>(p: &mut Printer, n: &'ast ArraySize) {
         ArraySize::StaticExpression(_) => p.w.write_str(" StaticExpression").unwrap(),
     }
 }
-fn print_statement<'ast>(p: &mut Printer, n: &'ast Statement) {
+fn print_statement(p: &mut Printer, n: &Statement) {
     match *n {
         Statement::Compound(_) => p.w.write_str(" Compound").unwrap(),
         Statement::Goto(_) => p.w.write_str(" Goto").unwrap(),
@@ -592,26 +588,24 @@ fn print_statement<'ast>(p: &mut Printer, n: &'ast Statement) {
         _ => {}
     }
 }
-fn print_offset_member<'ast>(p: &mut Printer, n: &'ast OffsetMember) {
+fn print_offset_member(p: &mut Printer, n: &OffsetMember) {
     match *n {
         OffsetMember::Member(_) => p.w.write_str(" Member").unwrap(),
         OffsetMember::IndirectMember(_) => p.w.write_str(" IndirectMember").unwrap(),
         _ => {}
     }
 }
-fn print_label<'ast>(p: &mut Printer, n: &'ast Label) {
-    match *n {
-        Label::Default => p.w.write_str(" Default").unwrap(),
-        _ => {}
+fn print_label(p: &mut Printer, n: &Label) {
+    if *n == Label::Default {
+        p.w.write_str(" Default").unwrap()
     }
 }
-fn print_for_initializer<'ast>(p: &mut Printer, n: &'ast ForInitializer) {
-    match *n {
-        ForInitializer::Empty => p.w.write_str(" Empty").unwrap(),
-        _ => {}
+fn print_for_initializer(p: &mut Printer, n: &ForInitializer) {
+    if *n == ForInitializer::Empty {
+        p.w.write_str(" Empty").unwrap()
     }
 }
-fn print_type_specifier<'ast>(p: &mut Printer, n: &'ast TypeSpecifier) {
+fn print_type_specifier(p: &mut Printer, n: &TypeSpecifier) {
     match *n {
         TypeSpecifier::Void => p.w.write_str(" Void").unwrap(),
         TypeSpecifier::Char => p.w.write_str(" Char").unwrap(),

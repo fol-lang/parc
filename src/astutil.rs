@@ -91,7 +91,7 @@ pub fn ts18661_float(binary: bool, width: usize, extended: bool) -> TS18661Float
             (false, false) => TS18661FloatFormat::DecimalInterchange,
             (false, true) => TS18661FloatFormat::DecimalExtended,
         },
-        width: width,
+        width,
     }
 }
 
@@ -100,7 +100,7 @@ pub fn int_suffix(mut s: &str) -> Result<IntegerSuffix, &'static str> {
     let mut u = false;
     let mut i = false;
 
-    while s.len() > 0 {
+    while !s.is_empty() {
         if l == IntegerSize::Int && (s.starts_with("ll") || s.starts_with("LL")) {
             l = IntegerSize::LongLong;
             s = &s[2..];

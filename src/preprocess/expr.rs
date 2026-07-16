@@ -132,10 +132,10 @@ impl<'a> ExprParser<'a> {
 
     fn ternary(&mut self) -> i128 {
         let cond = self.logical_or();
-        if self.peek().map_or(false, |t| t.text == "?") {
+        if self.peek().is_some_and(|t| t.text == "?") {
             self.advance(); // skip ?
             let then_val = self.ternary();
-            if self.peek().map_or(false, |t| t.text == ":") {
+            if self.peek().is_some_and(|t| t.text == ":") {
                 self.advance(); // skip :
             }
             let else_val = self.ternary();
@@ -360,12 +360,12 @@ impl<'a> ExprParser<'a> {
 
     fn peek_text_is(&self, s: &str) -> bool {
         // Check if the *actual* token text matches (for multi-char operators)
-        self.peek().map_or(false, |t| t.text == s)
+        self.peek().is_some_and(|t| t.text == s)
     }
 }
 
 fn parse_integer(s: &str) -> i128 {
-    let s = s.trim_end_matches(|c: char| c == 'u' || c == 'U' || c == 'l' || c == 'L');
+    let s = s.trim_end_matches(['u', 'U', 'l', 'L']);
     if s.starts_with("0x") || s.starts_with("0X") {
         i128::from_str_radix(&s[2..], 16).unwrap_or(0)
     } else if s.starts_with("0b") || s.starts_with("0B") {

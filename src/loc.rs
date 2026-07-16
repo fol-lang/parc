@@ -45,13 +45,7 @@ pub fn get_location_for_offset<'a>(src: &'a str, pos: usize) -> (Location<'a>, V
 fn test_get_location_for_offset() {
     fn t(src: &str, pos: usize, file: &str, line: usize, includes: &[(&str, usize)]) {
         let (loc, inc) = get_location_for_offset(src, pos);
-        assert_eq!(
-            loc,
-            Location {
-                file: file,
-                line: line
-            }
-        );
+        assert_eq!(loc, Location { file, line });
         assert_eq!(inc.len(), includes.len());
         for (loc, &(f, l)) in inc.iter().zip(includes) {
             assert_eq!(loc, &Location { file: f, line: l });
@@ -65,7 +59,7 @@ fn test_get_location_for_offset() {
     t("# 10 \"init\"\na\nb\n", 14, "init", 11, &[]);
     t("# 10 \"init\"\na\nb\n", 15, "init", 11, &[]);
 
-    const T: &'static str = r#"
+    const T: &str = r#"
 # 10 "foo"
 ...
 # 1 "bar" 1 3 4
@@ -99,18 +93,14 @@ macro_rules! otry {
 }
 
 fn strip_prefix<'a>(s: &'a str, p: &str) -> Option<&'a str> {
-    if s.starts_with(p) {
-        Some(&s[p.len()..])
-    } else {
-        None
-    }
+    s.strip_prefix(p)
 }
 
 // https://gcc.gnu.org/onlinedocs/cpp/Preprocessor-Output.html
 fn parse_line_directive(s: &str) -> Option<(Location<'_>, u32)> {
     let s = otry!(strip_prefix(s, "# "));
     let n = otry!(s.find(" "));
-    let line = otry!(usize::from_str_radix(&s[..n], 10).ok());
+    let line = otry!(s[..n].parse::<usize>().ok());
 
     let s = otry!(strip_prefix(&s[n..], " \""));
     let mut n = 0;
@@ -124,16 +114,10 @@ fn parse_line_directive(s: &str) -> Option<(Location<'_>, u32)> {
     let file = &s[..n];
     let s = otry!(strip_prefix(&s[n..], "\""));
 
-    let flags = s.bytes().filter(|&c| c >= b'1' && c <= b'4');
+    let flags = s.bytes().filter(|&c| (b'1'..=b'4').contains(&c));
     let flags = flags.fold(0, |a, f| a | 1 << (f - b'1'));
 
-    Some((
-        Location {
-            file: file,
-            line: line,
-        },
-        flags,
-    ))
+    Some((Location { file, line }, flags))
 }
 
 #[test]

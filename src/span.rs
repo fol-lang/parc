@@ -1,5 +1,4 @@
 //! Source text location tracking
-use std::usize::MAX;
 use std::{cmp, fmt};
 
 /// Byte offset of a node start and end positions in the input stream
@@ -11,24 +10,23 @@ pub struct Span {
 
 impl Span {
     /// Create a new span for a specific location
+    // This constructor name is part of the public AST API.
+    #[allow(clippy::self_named_constructors)]
     pub fn span(start: usize, end: usize) -> Span {
-        Span {
-            start: start,
-            end: end,
-        }
+        Span { start, end }
     }
 
     /// Create a new undefined span that is equal to any other span
     pub fn none() -> Span {
         Span {
-            start: MAX,
-            end: MAX,
+            start: usize::MAX,
+            end: usize::MAX,
         }
     }
 
     /// Test if span is undefined
     pub fn is_none(&self) -> bool {
-        self.start == MAX && self.end == MAX
+        self.start == usize::MAX && self.end == usize::MAX
     }
 }
 
@@ -58,9 +56,6 @@ pub struct Node<T> {
 impl<T> Node<T> {
     /// Create new node
     pub fn new(node: T, span: Span) -> Node<T> {
-        Node {
-            node: node,
-            span: span,
-        }
+        Node { node, span }
     }
 }

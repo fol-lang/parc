@@ -59,6 +59,11 @@ impl MacroTable {
         self.macros.len()
     }
 
+    /// Whether the macro table contains no definitions.
+    pub fn is_empty(&self) -> bool {
+        self.macros.is_empty()
+    }
+
     /// Expand all object-like macros in a token list.
     ///
     /// Performs repeated passes until no more expansions occur.
@@ -138,16 +143,10 @@ impl MacroTable {
                     i += 1; // skip )
                             // Trim whitespace from args
                     for arg in &mut args {
-                        while arg
-                            .first()
-                            .map_or(false, |t| t.kind == TokenKind::Whitespace)
-                        {
+                        while arg.first().is_some_and(|t| t.kind == TokenKind::Whitespace) {
                             arg.remove(0);
                         }
-                        while arg
-                            .last()
-                            .map_or(false, |t| t.kind == TokenKind::Whitespace)
-                        {
+                        while arg.last().is_some_and(|t| t.kind == TokenKind::Whitespace) {
                             arg.pop();
                         }
                     }
@@ -211,7 +210,7 @@ impl MacroTable {
                 // Remove trailing whitespace from result
                 while result
                     .last()
-                    .map_or(false, |t: &Token| t.kind == TokenKind::Whitespace)
+                    .is_some_and(|t: &Token| t.kind == TokenKind::Whitespace)
                 {
                     result.pop();
                 }

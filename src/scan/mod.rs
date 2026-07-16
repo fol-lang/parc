@@ -142,7 +142,7 @@ fn preprocess_external(config: &ScanConfig) -> Result<(String, String), ScanErro
         cmd.arg(header);
     }
 
-    let output = cmd.output().map_err(|e| ScanError::PreprocessorFailed(e))?;
+    let output = cmd.output().map_err(ScanError::PreprocessorFailed)?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
@@ -666,8 +666,18 @@ intptr_t get_handle(void);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    #[cfg(feature = "system-tests")]
     #[test]
     fn scan_builtin_vs_gcc_stdint_types() {
+        const TEST_NAME: &str = "scan_builtin_vs_gcc_stdint_types";
+        if !crate::tests::system_support::begin_system_test(
+            TEST_NAME,
+            crate::tests::system_support::command_available("gcc"),
+            "gcc",
+        ) {
+            return;
+        }
+
         // Compare our builtin stdint.h extraction with gcc -E extraction
         // for the same source. Both should produce equivalent resolved types.
         let dir = std::env::temp_dir().join("pac_test_stdint_cmp");
@@ -681,11 +691,25 @@ int64_t get_big(void);
         std::fs::write(dir.join("api.h"), header).unwrap();
 
         // Builtin preprocessor with typedef resolution
+        // Keep the builtin half independent from the native toolchain's Nix/
+        // system include roots; restore them before invoking gcc below.
+        let saved_cpath = std::env::var_os("CPATH");
+        let saved_c_include_path = std::env::var_os("C_INCLUDE_PATH");
+        std::env::remove_var("CPATH");
+        std::env::remove_var("C_INCLUDE_PATH");
         let builtin_config = ScanConfig::new()
             .entry_header(dir.join("api.h"))
             .with_builtin_preprocessor()
             .with_resolve_typedefs();
         let builtin_result = scan_headers(&builtin_config).expect("builtin scan");
+        match saved_cpath {
+            Some(value) => std::env::set_var("CPATH", value),
+            None => std::env::remove_var("CPATH"),
+        }
+        match saved_c_include_path {
+            Some(value) => std::env::set_var("C_INCLUDE_PATH", value),
+            None => std::env::remove_var("C_INCLUDE_PATH"),
+        }
 
         let builtin_pkg = &builtin_result.package;
         let get_id = builtin_pkg.find_function("get_id").unwrap();
@@ -702,20 +726,19 @@ int64_t get_big(void);
             .entry_header(dir.join("api.h"))
             .with_resolve_typedefs();
 
-        if let Ok(gcc_result) = scan_headers(&gcc_config) {
-            let gcc_pkg = &gcc_result.package;
-            let gcc_id = gcc_pkg.find_function("get_id").unwrap();
-            let gcc_byte = gcc_pkg.find_function("get_byte").unwrap();
-            let gcc_big = gcc_pkg.find_function("get_big").unwrap();
+        let gcc_result = scan_headers(&gcc_config).expect("external gcc scan");
+        let gcc_pkg = &gcc_result.package;
+        let gcc_id = gcc_pkg.find_function("get_id").unwrap();
+        let gcc_byte = gcc_pkg.find_function("get_byte").unwrap();
+        let gcc_big = gcc_pkg.find_function("get_big").unwrap();
 
-            // Both should resolve to the same primitive types
-            assert_eq!(get_id.return_type, gcc_id.return_type, "int32_t mismatch");
-            assert_eq!(
-                get_byte.return_type, gcc_byte.return_type,
-                "uint8_t mismatch"
-            );
-            assert_eq!(get_big.return_type, gcc_big.return_type, "int64_t mismatch");
-        }
+        // Both should resolve to the same primitive types
+        assert_eq!(get_id.return_type, gcc_id.return_type, "int32_t mismatch");
+        assert_eq!(
+            get_byte.return_type, gcc_byte.return_type,
+            "uint8_t mismatch"
+        );
+        assert_eq!(get_big.return_type, gcc_big.return_type, "int64_t mismatch");
 
         let _ = std::fs::remove_dir_all(&dir);
     }

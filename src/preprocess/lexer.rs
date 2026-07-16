@@ -141,7 +141,7 @@ impl<'a> Lexer<'a> {
             }
             b'a'..=b'z' | b'A'..=b'Z' | b'_' => self.lex_identifier(start),
             b'0'..=b'9' => self.lex_number(start),
-            b'.' if self.peek(1).map_or(false, |c| c.is_ascii_digit()) => self.lex_number(start),
+            b'.' if self.peek(1).is_some_and(|c| c.is_ascii_digit()) => self.lex_number(start),
             _ => {
                 self.at_line_start = false;
                 // Multi-character operators

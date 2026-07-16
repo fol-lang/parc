@@ -6,7 +6,11 @@ fn unique_temp_dir(tag: &str) -> std::path::PathBuf {
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
         .as_nanos();
-    let dir = std::env::temp_dir().join(format!("parc_failure_matrix_{tag}_{}_{}", std::process::id(), nanos));
+    let dir = std::env::temp_dir().join(format!(
+        "parc_failure_matrix_{tag}_{}_{}",
+        std::process::id(),
+        nanos
+    ));
     std::fs::create_dir_all(&dir).unwrap();
     dir
 }

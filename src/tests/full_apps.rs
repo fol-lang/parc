@@ -1,21 +1,28 @@
+#[cfg(feature = "system-tests")]
 use std::env;
 use std::io;
-use std::path::{Path, PathBuf};
+#[cfg(feature = "system-tests")]
+use std::path::Path;
+use std::path::PathBuf;
 
+#[cfg(feature = "system-tests")]
 use crate::driver::{self, Config, Flavor};
+#[cfg(feature = "system-tests")]
 use crate::env::Env;
 use crate::parser;
 
-use super::support::{
-    collect_fixture_dirs, manifest_bool, manifest_list_values, manifest_value, read_file,
-};
+#[cfg(feature = "system-tests")]
+use super::support::collect_fixture_dirs;
+use super::support::{manifest_bool, manifest_list_values, manifest_value, read_file};
 
 struct FullAppCase {
     path: PathBuf,
+    #[cfg_attr(not(feature = "system-tests"), allow(dead_code))]
     flavor: AppFlavor,
     mode: AppMode,
     expected: AppExpected,
     entry: PathBuf,
+    #[cfg_attr(not(feature = "system-tests"), allow(dead_code))]
     include_dirs: Vec<PathBuf>,
     allow_system_includes: bool,
     tags: Vec<String>,
@@ -112,17 +119,18 @@ impl FullAppCase {
         }
 
         Ok(FullAppCase {
-            path: path,
-            flavor: flavor,
-            mode: mode,
-            expected: expected,
+            path,
+            flavor,
+            mode,
+            expected,
             entry: entry.unwrap_or_else(|| PathBuf::from("main.c")),
-            include_dirs: include_dirs,
-            allow_system_includes: allow_system_includes,
-            tags: tags,
+            include_dirs,
+            allow_system_includes,
+            tags,
         })
     }
 
+    #[cfg(feature = "system-tests")]
     fn run(&self) -> Result<(), parser::ParseError> {
         let source_path = self.path.join(&self.entry);
         match self.mode {
@@ -178,6 +186,7 @@ impl FullAppCase {
         true
     }
 
+    #[cfg(feature = "system-tests")]
     fn describe(&self) -> String {
         format!(
             "{} [mode={:?}, flavor={:?}, expected={:?}]",
@@ -189,6 +198,7 @@ impl FullAppCase {
     }
 }
 
+#[cfg(feature = "system-tests")]
 fn config_for(flavor: AppFlavor) -> Config {
     match flavor {
         AppFlavor::Clang => Config::with_clang(),
@@ -196,6 +206,7 @@ fn config_for(flavor: AppFlavor) -> Config {
     }
 }
 
+#[cfg(feature = "system-tests")]
 fn flavor_for(flavor: AppFlavor) -> Flavor {
     match flavor {
         AppFlavor::Core => Flavor::StdC11,
@@ -204,6 +215,7 @@ fn flavor_for(flavor: AppFlavor) -> Flavor {
     }
 }
 
+#[cfg(feature = "system-tests")]
 fn driver_error_to_parse_error(error: driver::Error) -> parser::ParseError {
     match error {
         driver::Error::SyntaxError(err) => parser::ParseError {
@@ -218,6 +230,7 @@ fn driver_error_to_parse_error(error: driver::Error) -> parser::ParseError {
     }
 }
 
+#[cfg(feature = "system-tests")]
 fn syntax_error_to_parse_error(error: driver::SyntaxError) -> parser::ParseError {
     parser::ParseError {
         line: error.line,
@@ -227,8 +240,18 @@ fn syntax_error_to_parse_error(error: driver::SyntaxError) -> parser::ParseError
     }
 }
 
+#[cfg(feature = "system-tests")]
 #[test]
 fn full_app_main() {
+    const TEST_NAME: &str = "full_app_main";
+    if !super::system_support::begin_system_test(
+        TEST_NAME,
+        super::system_support::command_available("gcc"),
+        "gcc",
+    ) {
+        return;
+    }
+
     let mut case_paths = Vec::new();
     collect_fixture_dirs(Path::new("test/full_apps"), &mut case_paths);
     assert!(
@@ -303,10 +326,10 @@ fn full_app_parse_error_expectation_is_supported() {
         expected: ::std::collections::HashSet::new(),
     });
 
-    assert!(match (case.expected, parse_result) {
-        (AppExpected::ParseError, Err(_)) => true,
-        _ => false,
-    });
+    assert!(matches!(
+        (case.expected, parse_result),
+        (AppExpected::ParseError, Err(_))
+    ));
 }
 
 #[test]

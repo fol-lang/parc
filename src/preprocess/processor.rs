@@ -49,6 +49,12 @@ struct CondState {
     parent_active: bool,
 }
 
+impl Default for Processor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Processor {
     pub fn new() -> Self {
         Processor {
@@ -109,7 +115,7 @@ impl Processor {
 
         while i < tokens.len() {
             // Check if current scope is active
-            let active = cond_stack.last().map_or(true, |s| s.active);
+            let active = cond_stack.last().is_none_or(|s| s.active);
 
             // Look for directives: # at start of line
             if tokens[i].kind == TokenKind::Hash {
@@ -238,7 +244,7 @@ impl Processor {
                     Directive::Pragma { ref tokens } => {
                         // Check for #pragma once
                         let first_nonws = tokens.iter().find(|t| t.kind != TokenKind::Whitespace);
-                        if first_nonws.map_or(false, |t| t.text == "once") {
+                        if first_nonws.is_some_and(|t| t.text == "once") {
                             output.pragma_once = true;
                         }
                     }

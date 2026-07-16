@@ -25,7 +25,7 @@ impl Env {
             extensions_gnu: false,
             extensions_clang: false,
             symbols: vec![HashMap::default()],
-            reserved: reserved,
+            reserved,
         }
     }
 
@@ -39,7 +39,7 @@ impl Env {
             extensions_gnu: true,
             extensions_clang: false,
             symbols: vec![symbols],
-            reserved: reserved,
+            reserved,
         }
     }
 
@@ -54,7 +54,7 @@ impl Env {
             extensions_gnu: true,
             extensions_clang: true,
             symbols: vec![symbols],
-            reserved: reserved,
+            reserved,
         }
     }
 
@@ -90,6 +90,7 @@ impl Env {
     }
 
     #[cfg(test)]
+    #[cfg(all(test, feature = "repo-tests"))]
     pub fn add_typename(&mut self, s: &str) {
         self.add_symbol(s, Symbol::Typename)
     }
@@ -98,7 +99,7 @@ impl Env {
 fn find_declarator_name(d: &DeclaratorKind) -> Option<&str> {
     match d {
         &DeclaratorKind::Abstract => None,
-        &DeclaratorKind::Identifier(ref i) => Some(&i.node.name),
-        &DeclaratorKind::Declarator(ref d) => find_declarator_name(&d.node.kind.node),
+        DeclaratorKind::Identifier(i) => Some(&i.node.name),
+        DeclaratorKind::Declarator(d) => find_declarator_name(&d.node.kind.node),
     }
 }

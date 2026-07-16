@@ -22,6 +22,12 @@ pub struct Extractor {
     diagnostics: Vec<SourceDiagnostic>,
 }
 
+impl Default for Extractor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Extractor {
     pub fn new() -> Self {
         Self {

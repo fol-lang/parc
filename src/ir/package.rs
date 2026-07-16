@@ -222,7 +222,12 @@ impl SourcePackage {
         let partial_diagnostic_count = self
             .diagnostics
             .iter()
-            .filter(|diag| matches!(diag.kind, super::diagnostics::DiagnosticKind::DeclarationPartial))
+            .filter(|diag| {
+                matches!(
+                    diag.kind,
+                    super::diagnostics::DiagnosticKind::DeclarationPartial
+                )
+            })
             .count();
         let unsupported_diagnostic_count = self
             .diagnostics
@@ -396,6 +401,12 @@ impl Default for SourcePackage {
 /// build packages from non-extraction sources.
 pub struct SourcePackageBuilder {
     package: SourcePackage,
+}
+
+impl Default for SourcePackageBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl SourcePackageBuilder {
@@ -715,7 +726,9 @@ mod tests {
         assert_eq!(status.partial_diagnostic_count, 1);
         assert_eq!(status.unsupported_diagnostic_count, 1);
         assert_eq!(status.parse_failure_count, 0);
-        assert!(pkg.extraction_status_message().contains("1 trustworthy extracted items"));
+        assert!(pkg
+            .extraction_status_message()
+            .contains("1 trustworthy extracted items"));
     }
 
     #[test]

@@ -22,7 +22,9 @@ fn failure_matrix_source_resilient_mode_keeps_good_items() {
     let status = pkg.extraction_status();
     assert_eq!(status.trustworthy_item_count, pkg.item_count());
     assert_eq!(status.parse_failure_count, 0);
-    assert!(pkg.extraction_status_message().contains("trustworthy extracted items"));
+    assert!(pkg
+        .extraction_status_message()
+        .contains("trustworthy extracted items"));
 }
 
 #[test]

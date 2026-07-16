@@ -1,11 +1,15 @@
+#[cfg(feature = "repo-tests")]
 use std::ffi::{OsStr, OsString};
+#[cfg(feature = "system-tests")]
 use std::fs;
+#[cfg(feature = "repo-tests")]
 use std::fs::DirEntry;
 use std::fs::File;
 use std::io;
 use std::io::Read;
 use std::path::Path;
 
+#[cfg(feature = "repo-tests")]
 pub fn filter_entry(entry: &DirEntry, filter: Option<&OsString>) -> bool {
     let path = entry.path();
     let name = match path.file_name().and_then(OsStr::to_str) {
@@ -87,6 +91,7 @@ pub fn read_file(path: &Path) -> io::Result<String> {
     Ok(content)
 }
 
+#[cfg(feature = "system-tests")]
 pub fn collect_fixture_dirs(root: &Path, cases: &mut Vec<std::path::PathBuf>) {
     if root.join("fixture.toml").is_file() {
         cases.push(root.to_path_buf());

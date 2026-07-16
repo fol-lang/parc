@@ -340,7 +340,7 @@ pub fn eval_const_expr(expr: &Expression) -> Option<i128> {
             Constant::Integer(i) => {
                 let s = i.number.as_ref();
                 match i.base {
-                    IntegerBase::Decimal => i128::from_str_radix(s, 10).ok(),
+                    IntegerBase::Decimal => s.parse::<i128>().ok(),
                     IntegerBase::Octal => i128::from_str_radix(s, 8).ok(),
                     IntegerBase::Hexadecimal => i128::from_str_radix(s, 16).ok(),
                     IntegerBase::Binary => i128::from_str_radix(s, 2).ok(),

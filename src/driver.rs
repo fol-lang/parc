@@ -91,17 +91,17 @@ impl From<SyntaxError> for Error {
 impl fmt::Display for Error {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            &Error::PreprocessorError(ref e) => write!(fmt, "preprocessor error: {}", e),
-            &Error::SyntaxError(ref e) => write!(fmt, "syntax error: {}", e),
+            Error::PreprocessorError(e) => write!(fmt, "preprocessor error: {}", e),
+            Error::SyntaxError(e) => write!(fmt, "syntax error: {}", e),
         }
     }
 }
 
 impl error::Error for Error {
     fn description(&self) -> &str {
-        match self {
-            &Error::PreprocessorError(_) => "preprocessor error",
-            &Error::SyntaxError(_) => "syntax error",
+        match *self {
+            Error::PreprocessorError(_) => "preprocessor error",
+            Error::SyntaxError(_) => "syntax error",
         }
     }
 }
@@ -175,12 +175,9 @@ pub fn parse_preprocessed(config: &Config, source: String) -> Result<Parse, Synt
     };
 
     match translation_unit(&source, &mut env) {
-        Ok(unit) => Ok(Parse {
-            source: source,
-            unit: unit,
-        }),
+        Ok(unit) => Ok(Parse { source, unit }),
         Err(err) => Err(SyntaxError {
-            source: source,
+            source,
             line: err.line,
             column: err.column,
             offset: err.offset,
@@ -197,10 +194,7 @@ pub fn parse_preprocessed_resilient(config: &Config, source: String) -> Parse {
     };
 
     let unit = translation_unit_resilient(&source, &mut env);
-    Parse {
-        source: source,
-        unit: unit,
-    }
+    Parse { source, unit }
 }
 
 /// Parse a C file using the built-in preprocessor (no external gcc/clang needed).
@@ -231,8 +225,7 @@ pub fn parse_builtin<P: AsRef<Path>>(
     let result = resolver.preprocess_file(source.as_ref(), &mut processor);
 
     if !result.errors.is_empty() {
-        return Err(Error::PreprocessorError(io::Error::new(
-            io::ErrorKind::Other,
+        return Err(Error::PreprocessorError(io::Error::other(
             result.errors.join("\n"),
         )));
     }
@@ -270,8 +263,7 @@ pub fn capture_macros<P: AsRef<Path>>(
     let result = resolver.preprocess_file(source.as_ref(), &mut processor);
 
     if !result.errors.is_empty() {
-        return Err(Error::PreprocessorError(io::Error::new(
-            io::ErrorKind::Other,
+        return Err(Error::PreprocessorError(io::Error::other(
             result.errors.join("\n"),
         )));
     }
@@ -303,15 +295,12 @@ fn preprocess(config: &Config, source: &Path) -> io::Result<String> {
     if output.status.success() {
         match String::from_utf8(output.stdout) {
             Ok(s) => Ok(s),
-            Err(e) => Err(io::Error::new(io::ErrorKind::Other, e)),
+            Err(e) => Err(io::Error::other(e)),
         }
     } else {
         match String::from_utf8(output.stderr) {
-            Ok(s) => Err(io::Error::new(io::ErrorKind::Other, s)),
-            Err(_) => Err(io::Error::new(
-                io::ErrorKind::Other,
-                "cpp error contains invalid utf-8",
-            )),
+            Ok(s) => Err(io::Error::other(s)),
+            Err(_) => Err(io::Error::other("cpp error contains invalid utf-8")),
         }
     }
 }

@@ -281,9 +281,15 @@ fn scan_vendored_libpng_headers() {
 
     assert!(result.preprocessed_source.contains("png_byte"));
     assert!(result.preprocessed_source.contains("png_uint_32"));
-    assert!(!result.preprocessed_source.contains("libpng requires 8-bit bytes"));
-    assert!(!result.preprocessed_source.contains("libpng requires a signed 16-bit type"));
-    assert!(!result.preprocessed_source.contains("libpng requires an unsigned 32-bit (or more) type"));
+    assert!(!result
+        .preprocessed_source
+        .contains("libpng requires 8-bit bytes"));
+    assert!(!result
+        .preprocessed_source
+        .contains("libpng requires a signed 16-bit type"));
+    assert!(!result
+        .preprocessed_source
+        .contains("libpng requires an unsigned 32-bit (or more) type"));
 }
 
 // --- Defines controlling ifdef ---

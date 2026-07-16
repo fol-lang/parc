@@ -278,6 +278,8 @@ pub struct StaticAssert {
 pub struct TranslationUnit(pub Vec<Node<ExternalDeclaration>>);
 
 #[derive(Debug, PartialEq, Clone)]
+// Boxing the largest variant would break the stable public AST representation.
+#[allow(clippy::large_enum_variant)]
 pub enum ExternalDeclaration {
     Declaration(Node<Declaration>),
     StaticAssert(Node<StaticAssert>),

@@ -8,6 +8,15 @@ fn corpus_root(name: &str) -> std::path::PathBuf {
         .join(name)
 }
 
+#[cfg(feature = "system-tests")]
+fn begin_external_test(name: &str) -> bool {
+    super::system_support::begin_system_test(
+        name,
+        super::system_support::command_available("gcc"),
+        "gcc",
+    )
+}
+
 #[test]
 fn hostile_macro_env_corpus_scans_with_builtin_preprocessor() {
     let root = corpus_root("macro_env_a");
@@ -130,8 +139,15 @@ fn hostile_include_env_e_corpus_scans_with_builtin_preprocessor() {
     assert!(result.preprocessed_source.contains("va_list"));
 }
 
+#[cfg(feature = "system-tests")]
 #[test]
 fn hostile_macro_env_corpus_builtin_and_external_preprocessors_agree_on_items() {
+    if !begin_external_test(
+        "hostile_macro_env_corpus_builtin_and_external_preprocessors_agree_on_items",
+    ) {
+        return;
+    }
+
     let root = corpus_root("macro_env_a");
     let include_dir = root.join("include");
     let entry = root.join("entry.h");
@@ -154,7 +170,10 @@ fn hostile_macro_env_corpus_builtin_and_external_preprocessors_agree_on_items() 
     .expect("external macro corpus scan should succeed");
 
     assert!(builtin.package.find_type_alias("corpus_handle_t").is_some());
-    assert!(external.package.find_type_alias("corpus_handle_t").is_some());
+    assert!(external
+        .package
+        .find_type_alias("corpus_handle_t")
+        .is_some());
     assert!(builtin.package.find_function("corpus_open").is_some());
     assert!(external.package.find_function("corpus_open").is_some());
     assert!(builtin.package.find_function("corpus_format").is_some());
@@ -163,8 +182,15 @@ fn hostile_macro_env_corpus_builtin_and_external_preprocessors_agree_on_items() 
     assert!(external.preprocessed_source.contains("corpus_format"));
 }
 
+#[cfg(feature = "system-tests")]
 #[test]
 fn hostile_combo_env_corpus_builtin_and_external_preprocessors_agree_on_items() {
+    if !begin_external_test(
+        "hostile_combo_env_corpus_builtin_and_external_preprocessors_agree_on_items",
+    ) {
+        return;
+    }
+
     let root = corpus_root("combo_env_c");
     let include_dir = root.join("include");
     let entry = root.join("entry.h");
@@ -200,8 +226,15 @@ fn hostile_combo_env_corpus_builtin_and_external_preprocessors_agree_on_items() 
     assert!(external.preprocessed_source.contains("combo_log"));
 }
 
+#[cfg(feature = "system-tests")]
 #[test]
 fn hostile_order_env_d_corpus_builtin_and_external_preprocessors_agree_on_items() {
+    if !begin_external_test(
+        "hostile_order_env_d_corpus_builtin_and_external_preprocessors_agree_on_items",
+    ) {
+        return;
+    }
+
     let root = corpus_root("order_env_d");
     let include_dir = root.join("include");
     let entry = root.join("entry.h");
@@ -237,8 +270,15 @@ fn hostile_order_env_d_corpus_builtin_and_external_preprocessors_agree_on_items(
     assert!(external.preprocessed_source.contains("order_log"));
 }
 
+#[cfg(feature = "system-tests")]
 #[test]
 fn hostile_include_env_e_corpus_builtin_and_external_preprocessors_agree_on_items() {
+    if !begin_external_test(
+        "hostile_include_env_e_corpus_builtin_and_external_preprocessors_agree_on_items",
+    ) {
+        return;
+    }
+
     let root = corpus_root("include_env_e");
     let include_dir = root.join("include");
     let entry = root.join("entry.h");
@@ -260,10 +300,22 @@ fn hostile_include_env_e_corpus_builtin_and_external_preprocessors_agree_on_item
     )
     .expect("external include-order corpus scan should succeed");
 
-    assert!(builtin.package.find_type_alias("include_counter_t").is_some());
-    assert!(external.package.find_type_alias("include_counter_t").is_some());
-    assert!(builtin.package.find_type_alias("include_log_sink").is_some());
-    assert!(external.package.find_type_alias("include_log_sink").is_some());
+    assert!(builtin
+        .package
+        .find_type_alias("include_counter_t")
+        .is_some());
+    assert!(external
+        .package
+        .find_type_alias("include_counter_t")
+        .is_some());
+    assert!(builtin
+        .package
+        .find_type_alias("include_log_sink")
+        .is_some());
+    assert!(external
+        .package
+        .find_type_alias("include_log_sink")
+        .is_some());
     assert!(builtin.package.find_record("include_frame").is_some());
     assert!(external.package.find_record("include_frame").is_some());
     assert!(builtin.package.find_function("include_open").is_some());

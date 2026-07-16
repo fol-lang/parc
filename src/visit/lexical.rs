@@ -82,9 +82,8 @@ pub fn visit_float_format<'ast, V: Visit<'ast> + ?Sized>(
     float_format: &'ast FloatFormat,
     span: &'ast Span,
 ) {
-    match *float_format {
-        FloatFormat::TS18661Format(ref f) => visitor.visit_ts18661_float_type(f, span),
-        _ => {}
+    if let FloatFormat::TS18661Format(ref f) = *float_format {
+        visitor.visit_ts18661_float_type(f, span)
     }
 }
 

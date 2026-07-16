@@ -1,16 +1,21 @@
 [package]
-name = "parc"
+name = "follang-parc"
 version = "0.16.0"
 authors = ["Vickenty Fesunov <kent@setattr.net>"]
 edition = "2021"
+rust-version = "1.89"
 license = "MIT/Apache-2.0"
 description = "C language frontend: preprocessing, parsing, and source-level semantic extraction"
-include = [ "/src/**/*.rs", "Cargo.toml", "/LICENSE*", "/README.md" ]
-documentation = "https://docs.rs/parc"
-homepage = "https://github.com/vickenty/lang-c"
-repository = "https://github.com/vickenty/lang-c"
+readme = "README.md"
+include = ["/src/**/*.rs", "/Cargo.toml", "/LICENSE-*", "/README.md"]
+documentation = "https://docs.rs/follang-parc"
+homepage = "https://github.com/follang/lang-c"
+repository = "https://github.com/follang/lang-c"
 keywords = [ "ast", "c", "parser", "ffi", "preprocessing" ]
 categories = [ "parser-implementations" ]
+
+[lib]
+name = "parc"
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
@@ -20,3 +25,5 @@ serde_json = "=1.0.145"
 
 [features]
 dev-pegviz = [] # tests only: emit extra output for pegviz
+repo-tests = []
+system-tests = []

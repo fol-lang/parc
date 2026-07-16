@@ -16,10 +16,8 @@
 //! ```
 //! use parc::driver::{Config, parse};
 //!
-//! fn main() {
-//!     let config = Config::default();
-//!     println!("{:?}", parse(&config, "example.c"));
-//! }
+//! let config = Config::default();
+//! println!("{:?}", parse(&config, "example.c"));
 //! ```
 
 #![allow(deprecated)]

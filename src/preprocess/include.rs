@@ -41,6 +41,12 @@ pub struct PreprocessResult {
     pub warnings: Vec<String>,
 }
 
+impl Default for IncludeResolver {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl IncludeResolver {
     pub fn new() -> Self {
         IncludeResolver {

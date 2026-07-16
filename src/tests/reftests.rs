@@ -3,9 +3,7 @@ use std::fs;
 use std::fs::DirEntry;
 use std::fs::File;
 use std::io;
-use std::io::stdout;
 use std::io::{BufRead, BufReader, BufWriter, Write};
-use std::mem;
 use std::path::PathBuf;
 
 use crate::env::Env;
@@ -25,15 +23,15 @@ struct Case {
     expect: String,
 }
 
-const OUTPUT_START: &'static str = "/*===";
-const OUTPUT_END: &'static str = "===*/";
+const OUTPUT_START: &str = "/*===";
+const OUTPUT_END: &str = "===*/";
 
 impl Case {
     fn from_path(entry: &DirEntry) -> io::Result<Case> {
         let name = entry.file_name();
         let name = name.to_str().expect("path to string");
         let kind = name.split("-").next().expect("case contains hyphen");
-        let kind = Kind::from_str(&kind).expect("unknown test case kind");
+        let kind = Kind::from_str(kind).expect("unknown test case kind");
 
         let file = BufReader::new(r#try!(File::open(entry.path())));
 
@@ -57,17 +55,17 @@ impl Case {
                 in_exp = false;
             } else {
                 target.push_str(line);
-                target.push_str("\n");
+                target.push('\n');
             }
         }
 
         Ok(Case {
             path: entry.path(),
             name: name.to_owned(),
-            kind: kind,
-            pragma: pragma,
-            source: source,
-            expect: expect,
+            kind,
+            pragma,
+            source,
+            expect,
         })
     }
 
@@ -85,9 +83,8 @@ impl Case {
         let mut env = env.unwrap_or_else(Env::with_core);
 
         for pragma in &self.pragma {
-            match *pragma {
-                Pragma::Typedef(ref name) => env.add_typename(&name),
-                _ => {}
+            if let Pragma::Typedef(ref name) = *pragma {
+                env.add_typename(name)
             }
         }
 
@@ -113,17 +110,17 @@ impl Case {
         let success = output_matches && pragma_fail.is_empty();
 
         if !success {
-            writeln!(stdout(), "\n{}:", self.name).unwrap();
-            writeln!(stdout(), "{}", self.source).unwrap();
+            println!("\n{}:", self.name);
+            println!("{}", self.source);
             if let Some(e) = error {
-                writeln!(stdout(), "ERROR:\n{}", e).unwrap();
+                println!("ERROR:\n{}", e);
             }
         }
 
         if !pragma_fail.is_empty() {
-            writeln!(stdout(), "Failed checks: ").unwrap();
+            println!("Failed checks: ");
             for failed in &pragma_fail {
-                writeln!(stdout(), "    {:?}", failed).unwrap();
+                println!("    {:?}", failed);
             }
         }
 
@@ -146,7 +143,7 @@ impl Case {
                         ""
                     }
                 };
-                writeln!(stdout(), "{:w$} | {}", a, b, w = width).unwrap();
+                println!("{:w$} | {}", a, b, w = width);
             }
 
             if env::var_os("TEST_UPDATE").is_some() {
@@ -162,7 +159,7 @@ impl Case {
         let mut file = BufReader::new(r#try!(File::open(&self.path)));
         let mut content = Vec::new();
         while r#try!(file.read_line(&mut buf)) > 0 {
-            content.push(mem::replace(&mut buf, String::new()));
+            content.push(std::mem::take(&mut buf));
         }
 
         let mut file = BufWriter::new(r#try!(File::create(&self.path)));
@@ -266,14 +263,8 @@ impl Pragma {
         Some(match line[0].trim() {
             "gnu" => Pragma::Gnu,
             "clang" => Pragma::Clang,
-            "typedef" => Pragma::Typedef(match line.pop() {
-                Some(v) => v,
-                None => return None,
-            }),
-            "is_typename" => Pragma::IsTypename(match line.pop() {
-                Some(v) => v,
-                None => return None,
-            }),
+            "typedef" => Pragma::Typedef(line.pop()?),
+            "is_typename" => Pragma::IsTypename(line.pop()?),
             _ => return None,
         })
     }
