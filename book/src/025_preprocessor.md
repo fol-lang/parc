@@ -1,7 +1,10 @@
 # Built-in Preprocessor
 
-PARC includes a complete built-in C preprocessor in the `parc::preprocess` module.
-This eliminates the runtime dependency on `gcc` or `clang` for preprocessing.
+PARC includes a built-in C preprocessor in the `parc::preprocess` module. It is
+useful for controlled inputs and repository fixtures, but it is incomplete and
+does not claim parity with GCC, Clang, or arbitrary system-header stacks. The
+normal external-driver path still requires a working `gcc` or `clang` when that
+mode is selected.
 
 ## Architecture
 
@@ -46,7 +49,7 @@ Features:
 
 ## Conditional compilation
 
-All standard conditional directives are supported:
+The current conditional directive parser recognizes:
 
 ```c
 #if CONDITION
@@ -57,7 +60,7 @@ All standard conditional directives are supported:
 #endif
 ```
 
-The `#if` expression evaluator supports:
+The fixture-covered `#if` expression evaluator includes:
 - Integer literals (decimal, octal, hex, binary)
 - Character constants (`'x'`)
 - `defined(NAME)` and `defined NAME`
@@ -99,9 +102,13 @@ define_target_macros(&mut table, &Target::host());
 // Now table has __STDC__, __linux__, __x86_64__, __GNUC__, etc.
 ```
 
-Supported targets:
+Predefined-macro configurations currently exist for:
 - **Architectures**: x86_64, aarch64, x86, arm
-- **Operating systems**: Linux, macOS (Darwin), Windows
+- **Operating-system macro sets**: Linux, macOS (Darwin), Windows
+
+These configurations only select predefined macro values. They do not certify
+native parsing or preprocessing support for Apple or Windows, and H0 has no
+native CI gate for either platform.
 
 Standard macros defined:
 - `__STDC__`, `__STDC_VERSION__`, `__STDC_HOSTED__`

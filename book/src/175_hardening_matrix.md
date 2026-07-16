@@ -22,7 +22,7 @@ A surface is stronger when it is:
 - repeated deterministically
 - tied to a realistic system or library family
 
-## Tier 1: Hermetic Canonical Baselines
+## Hermetic Regression Baselines
 
 These are the first surfaces that should stay green on every machine:
 
@@ -40,7 +40,7 @@ These matter because they exercise:
 - extraction into `SourcePackage`
 - deterministic behavior without relying on the host toolchain layout
 
-## Tier 2: Host-Dependent Canonical Ladders
+## Host-Dependent Regression Ladders
 
 These should stay green on developer and CI hosts where the headers exist, but
 they are not the first portability baseline:
@@ -65,7 +65,7 @@ understand everything:
 - extraction-status summaries that distinguish supported, partial, and
   unsupported output trust
 
-For release purposes, these failures are good when they are:
+For hardening purposes, these failures are useful when they are:
 
 - deterministic
 - diagnostic
@@ -83,7 +83,8 @@ The most important repeat-run anchors right now are:
 - OpenSSL wrapper extraction
 - combined Linux event-loop wrapper extraction
 
-If any of those become unstable, the release posture should drop immediately.
+If any of those become unstable, confidence in the current baseline should
+drop immediately.
 
 ## What This Matrix Does Not Mean
 
@@ -93,4 +94,5 @@ This matrix does not mean:
 - every preprocessor corner is solved
 - every large host-dependent surface is equally mature
 
-It means the current confidence ladder is explicit instead of implied.
+It means the current test-evidence ladder is explicit instead of implied. It
+does not complete H1 through H5 or certify any platform.

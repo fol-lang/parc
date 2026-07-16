@@ -1,37 +1,29 @@
 # PARC
 
-[![Documentation](https://docs.rs/parc/badge.svg)](https://docs.rs/parc)
-
 PARC is the source frontend of the toolchain. It owns preprocessing, parsing,
 header scanning, source extraction, source diagnostics, and the PARC-owned
 source IR.
 
-## Scoped Production Statement
+## Hardening Status
 
-The current Level 1 production claim for the whole pipeline is:
+PARC is being hardened as the source-contract owner for the sibling
+PARC/LINC/GERC pipeline. It is not yet certified for FOL V4.
 
-- Linux/ELF-first
-- canonical-corpus-backed
-- conservative on unsupported source families
+The distribution package is `follang-parc`; the Rust library name remains
+`parc`. Registry publication is deferred until the H6 distribution gate, and
+the crate version remains unchanged during baseline hardening. The declared
+minimum supported Rust version (MSRV) is Rust 1.89.
 
-For PARC specifically, that means:
+## Current Support Boundary
 
-- production-ready as the source frontend for the documented canonical corpus
-- not a claim of universal C frontend parity
-- not a claim that every hostile extension family is fully supported
-
-## Level 1 Support Matrix
-
-| Area | Level 1 status | Notes |
+| Area | Current evidence | Boundary |
 |---|---|---|
-| Linux/ELF-oriented public headers | primary production scope | This is the first production envelope. |
-| Apple-oriented public headers | secondary confidence scope | Useful and tested, but not the primary production claim. |
-| Windows-oriented public headers | secondary confidence scope | Not the first production envelope. |
-| K&R declarations | diagnostics-only | Explicit unsupported diagnostics are part of the contract. |
-| block pointers | rejected | Explicit rejection is part of the contract. |
-| bitfield-heavy records | partial | Source shape is preserved, full layout truth is not promised. |
-| vendor attributes | partial | Declarations are preserved with partial diagnostics where ignored. |
-| macro-heavy hostile stacks | corpus-backed support | Supported on the named canonical corpora, not claimed universally. |
+| External preprocessing | Exercised with GCC/Clang on configured hosts | Requires the compiler and requested headers; it is not hermetic system-header support. |
+| Built-in preprocessing | Exercised on repository fixtures | Incomplete; it is not a replacement for a production C preprocessor or proof of arbitrary host-header support. |
+| Parsing and extraction | Covered for the documented declaration fixtures | Not a complete C semantic frontend, name resolver, type checker, or ABI/layout authority. |
+| `SourcePackage` schema | Schema version 1 roundtrips are tested | A package is not necessarily complete: direct extraction leaves target/input fields at defaults, scan only populates the metadata it observes, and diagnostics can record partial or unsupported input. |
+| Linux system fixtures | Prerequisite-dependent tests exist | These are system-test evidence, not a certified platform tier. |
+| Apple and Windows | Target-macro and synthetic/configuration code paths exist | Neither platform is certified; there is no native Apple or Windows CI gate in H0. |
 
 The current crate surface is broader than “just a parser”:
 
@@ -135,18 +127,19 @@ The current suite covers:
 
 The tests are the best statement of what PARC actually supports.
 
-## Level 1 Contract
+## Current Contract
 
-For the Level 1 production claim, the PARC contract is:
+For the current hardening baseline, the PARC contract is:
 
 - supported families are supported on the named canonical corpus
 - partial families emit explicit partial diagnostics
 - diagnostics-only families preserve useful source surface where possible
 - rejected families fail explicitly rather than degrading silently
 
-This is a bounded frontend contract, not a universal C compatibility claim.
+This is a bounded, pre-certification frontend contract, not a universal C
+compatibility or production-readiness claim.
 
-## Hardening Matrix
+## Current Test Evidence
 
 The current hardening ladder is easiest to read in four buckets:
 
@@ -181,36 +174,7 @@ The current hardening ladder is easiest to read in four buckets:
 Read those as the current confidence anchors, not as a promise that every
 system header family is equally mature.
 
-## Release Gates
-
-`parc` should only be treated as release-ready when all of these remain green:
-
-- `make build`
-- `make test`
-- hostile/system/full-app suites
-- at least one vendored large-header scan target
-- at least one combined system-header target
-- deterministic repeated extraction on canonical large surfaces
-- deterministic repeated extraction on repo-owned hostile corpora
-- for whole-pipeline production claims, confirm the current downstream `gerc`
-  canonical anchors still ingest `parc`-driven source surfaces in
-  tests/examples
-
-The Level 1 production floor is the hermetic subset of those gates:
-
-- vendored musl `stdint`
-- vendored zlib scan
-- vendored libpng scan
-- repo-owned `macro_env_a` hostile macro corpus
-- repo-owned `type_env_b` hostile type corpus
-
-The host-dependent confidence-raise layer is:
-
-- OpenSSL public wrapper extraction
-- libcurl public wrapper extraction
-- combined Linux event-loop wrapper extraction
-
-The current canonical frontend surfaces are:
+The current frontend evidence surfaces include:
 
 - vendored musl `stdint`
 - vendored zlib scan
@@ -221,9 +185,7 @@ The current canonical frontend surfaces are:
 - libcurl public wrapper extraction
 - combined Linux event-loop wrapper extraction
 
-## Canonical Corpus
-
-The current PARC production corpus is intentionally named:
+The current PARC test corpus is intentionally named:
 
 - hermetic vendored
   - musl `stdint`
@@ -241,18 +203,35 @@ The current PARC production corpus is intentionally named:
   - malformed-source hard errors
   - resilient-source recovery paths
 
-Those are the surfaces PARC should be judged against first.
+Those are test anchors, not certification. H1 through H5 of the hardening plan
+remain future milestones; no corpus result by itself proves the cross-repository
+contract or a production platform.
 
-Whole-pipeline readiness is stricter than crate-local readiness: downstream
-`gerc` canonical anchors are part of the final production bar even though
-`parc/src/**` must not depend on downstream crates.
-
-## Build And Test
+## Verification
 
 ```sh
 make build
+make fmt-check
+make lint
+make check-features
 make test
+make test-contract
+make test-package
+make test-system
+make docs-check
+make verify
 ```
+
+`make test` is the hermetic required lane. `make test-system` defaults to
+`SYSTEM_TEST_MODE=optional`: each unavailable compiler/header prerequisite is
+reported as `SKIP`. `make verify` reruns that lane with
+`SYSTEM_TEST_MODE=required`, so a missing prerequisite is `FAIL`; required CI
+uses the same behavior. `make docs-check` requires `mdbook` and builds both the
+book and Rust API documentation without staging or committing output.
+
+`make verify` expects a clean worktree and confirms that the gate did not
+change it. During local review of an already-dirty tree,
+`VERIFY_ALLOW_DIRTY=1 make verify` retains the before/after cleanliness check.
 
 ## Development Notes
 

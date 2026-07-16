@@ -51,7 +51,9 @@ Builder for scan configuration:
 ### External (default)
 
 Uses `gcc -E` or `clang -E` to preprocess headers. Requires the
-compiler to be installed. Supports all system headers.
+compiler and requested development headers to be installed. PARC delegates
+preprocessing to that tool; this does not guarantee that its parser/extractor
+can represent every declaration in every system header.
 
 ### Built-in
 
@@ -65,6 +67,11 @@ The scan produces:
 
 - `package: SourcePackage` — the extracted declarations and metadata
 - `preprocessed_source: String` — the preprocessed source text
+
+The package is not implicitly complete. Scan records the entry headers,
+include directories, defines, compiler command, and flavor that it observes;
+target triple and compiler version may still be absent, and diagnostics can
+record partial or unsupported declarations.
 
 ## Intake
 

@@ -8,6 +8,12 @@ PARC is the source frontend of the toolchain. The real crate surface today is:
 - header scanning that goes straight to `SourcePackage`
 - AST-oriented support APIs such as visiting, spans, locations, and printing
 
+PARC is in H0 hardening and is not production-certified. The built-in
+preprocessor is a scoped implementation, and `SourcePackage` fields are only
+as complete as the entrypoint and observations that populated them. See
+[Hardening Status](./005_hardening_status.md) before treating a fixture-backed
+behavior as a supported platform or contract guarantee.
+
 That means the crate serves two audiences at once:
 
 1. downstream tools that want `parc::ir::SourcePackage`
@@ -39,7 +45,7 @@ raw source / headers
   -> parser AST
   -> extraction
   -> SourcePackage
-  -> serialized source artifact or downstream harness
+  -> version-1 source artifact or downstream harness
 ```
 
 `scan` short-circuits that flow into one high-level operation. `parse` and
@@ -63,7 +69,9 @@ raw source / headers
 
 ## Boundary
 
-The strongest consumer boundary is `parc::ir::SourcePackage`.
+The current consumer boundary is `parc::ir::SourcePackage`. It is not yet the
+frozen H1 contract and is not guaranteed to carry populated target, input,
+macro, or provenance fields from every construction path.
 
 That is the point where PARC stops owning the problem. Anything involving
 binary evidence or Rust generation is downstream from PARC, even if tests and

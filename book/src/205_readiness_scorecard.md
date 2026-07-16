@@ -1,41 +1,30 @@
-# Readiness Scorecard
+# Hardening Evidence Scorecard
 
 This chapter ties PARC readiness to real suites instead of vague confidence
 claims.
 
 ## Overall Posture
 
-PARC should currently be read as:
-
-- strong on parser and extraction fundamentals
-- strong on scan-first vendored baselines
-- materially stronger on hostile real-world builtin-preprocessor corners
-- intentionally conservative when a large header family cannot be modeled
-  honestly
-
-For Level 1 production, PARC should be read as Linux/ELF-first and
-canonical-corpus-backed, not as a universal frontend for arbitrary C headers.
-
-For whole-pipeline claims, this score is also capped by downstream `gerc`
-anchors that ingest translated PARC source surfaces in tests/examples.
-
-That is good progress, but it is not the same thing as "finished for every C
-header in the wild".
+PARC is in H0 hardening and is not production-certified. Repository tests show
+useful parser, extraction, scan, and failure behavior, but the built-in
+preprocessor is incomplete and current `SourcePackage` construction paths do
+not all populate target, input, macro, and provenance fields. Linux system
+tests are prerequisite-dependent; Apple and Windows have no native CI gate.
 
 ## Subsystem Scorecard
 
-- parser entrypoints: high
-- AST traversal and printing: high
-- extraction to `SourcePackage`: high
-- scan-first vendored baselines: high
-- hostile-header recovery: medium-high
-- built-in preprocessor coverage on ugly system headers: medium-high
-- large host-dependent wrapper extraction: medium-high
-- deterministic behavior on canonical large surfaces: high
+- parser entrypoints: fixture-backed
+- AST traversal and printing: fixture-backed
+- extraction to `SourcePackage`: fixture-backed, with partial/default fields
+- scan-first vendored baselines: hermetic regression evidence
+- hostile-header recovery: bounded regression evidence
+- built-in preprocessor: incomplete, corpus-scoped evidence
+- system-header wrappers: host- and prerequisite-dependent evidence
+- Apple/Windows: uncertified; no native H0 CI
 
 ## Canonical Readiness Anchors
 
-The release posture should be judged against these anchors first:
+The regression baseline should be checked against these anchors first:
 
 - vendored musl `stdint`
 - vendored zlib
@@ -45,8 +34,8 @@ The release posture should be judged against these anchors first:
 - OpenSSL public wrapper extraction
 - combined Linux event-loop wrapper extraction
 
-If those anchors stay green and deterministic, PARC is earning trust. If they
-drift, the scorecard should be lowered even if many smaller tests still pass.
+If those anchors stay green and deterministic, they preserve the current test
+baseline. They do not implement H1-H5 or prove a production contract.
 
 ## What Would Raise Readiness Further
 

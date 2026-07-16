@@ -26,13 +26,22 @@ The repository `Makefile` wraps the normal Cargo flow:
 
 ```sh
 make build
+make fmt-check
+make lint
+make check-features
 make test
+make test-contract
+make test-package
+make test-system
+make docs-check
+make verify
 ```
 
-Those run:
-
-- `cargo build --release`
-- `cargo test`
+`make test` is the hermetic required lane. Local `make test-system` defaults to
+optional prerequisite handling and prints `SKIP` when GCC or a required header
+is unavailable. `make verify` makes that system lane required, so missing
+prerequisites fail. See [Hardening Status](./005_hardening_status.md) for the
+complete gate and tool matrix.
 
 ## Hermeticity split
 

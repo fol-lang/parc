@@ -1,7 +1,9 @@
 # Extraction
 
 The `parc::extract` module converts a parsed C AST into the normalized
-`SourcePackage` IR. It handles all declaration families.
+`SourcePackage` IR. It handles the declaration families listed below and emits
+diagnostics or rejects input outside the current representation boundary; it
+does not claim complete C declaration coverage.
 
 ## Quick Start
 
@@ -95,3 +97,9 @@ The extractor produces diagnostics for constructs it cannot fully represent:
 - K&R function declarations (unsupported)
 - Block pointers (unsupported)
 - Static functions (not bindable)
+
+Direct extraction entrypoints populate items and diagnostics but otherwise
+start from `SourcePackage::new()`. Target identity, compiler metadata, inputs,
+macros, and provenance can therefore remain empty/default. Use the scan path
+when its observed input metadata is required, and still inspect diagnostics
+before treating any artifact as complete.

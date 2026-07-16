@@ -2,6 +2,9 @@
 
 This chapter records a practical support posture for PARC’s public surface.
 
+These are API-usage groupings only. They are not production tiers, semver
+stability promises, or platform certification while hardening is in progress.
+
 It is meant to help downstream users judge which parts of the crate are the safest long-term
 integration points.
 

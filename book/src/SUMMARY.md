@@ -1,5 +1,6 @@
 # Summary
 - [Introduction](./parc.md)
+- [Hardening Status](./005_hardening_status.md)
 - [Getting Started](./010_getting_started.md)
 - [Common Workflows](./015_workflows.md)
 - [Driver API](./020_driver.md)

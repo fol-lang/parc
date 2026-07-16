@@ -9,14 +9,14 @@ implicit support.
 It also acts as the current frontend-family closure ledger. Every hard family
 should fit into one of these buckets:
 
-- fully supported
-- resilient-only support
+- covered on named fixtures
+- resilient-only behavior
 - diagnostics-only improvement
 - intentional rejection
 
-For the Level 1 production claim, this ledger is part of the real contract.
-If a family is not classified here, it should not be treated as in-scope
-production behavior.
+This is a pre-certification evidence ledger. If a family is not classified
+here, it has no documented fixture-backed behavior; classification still does
+not make it a production guarantee.
 
 ## Frontend-Family Closure Ledger
 
@@ -28,8 +28,8 @@ The current important families are:
 | block pointers | intentional rejection | They still fail in parsing; current work is about sharper diagnostics, not pretending they lower cleanly. |
 | bitfield-heavy records | resilient-only support | PARC keeps record shape and bit widths, but layout truth remains partial. |
 | vendor attributes and calling-convention attributes | resilient-only support | PARC preserves the declaration and emits partial diagnostics when attributes are ignored. |
-| macro-heavy include stacks | fully supported on current canonical corpora | The canonical corpora are the proof surface; more corpora still need to land before claiming broad closure. |
-| hostile include-order and typedef-chain environments | fully supported on current canonical corpora | Treat this as corpus-backed support, not universal extension parity. |
+| macro-heavy include stacks | covered on named repository corpora | The named corpora are only regression evidence; they do not prove broad closure. |
+| hostile include-order and typedef-chain environments | covered on named repository corpora | Treat this as corpus-backed evidence, not universal extension parity. |
 
 This ledger is intentionally blunt:
 
@@ -37,12 +37,8 @@ This ledger is intentionally blunt:
 - if a family is only partially representable, say so
 - if a family is only proven on named corpora, document that exact scope
 
-The Level 1 production envelope is Linux/ELF-first and corpus-backed. That
-means "supported" here should be read as one of:
-
-- fully supported within the named canonical corpus
-- partially supported with explicit diagnostics
-- rejected explicitly as out of scope
+There is no production platform envelope during H0. Read each row literally as
+fixture coverage, partial behavior with diagnostics, or explicit rejection.
 
 ## Semantic analysis
 
@@ -85,10 +81,9 @@ Downstream tools should not assume:
 
 ## Macro inventory and expansion modeling
 
-PARC parses the post-preprocessing result. It does not expose a first-class macro inventory or a
-stable semantic model of macro definitions as its own output contract.
-
-If you need macro capture as data, that is outside PARC’s current scope.
+PARC has macro-capture helpers and `SourcePackage.macros`, but not every
+entrypoint populates them and the current version-1 artifact does not promise a
+complete, stable semantic inventory of macro definitions.
 
 ## Translation-unit semantics
 
