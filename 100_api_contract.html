@@ -15,8 +15,8 @@
         <link rel="icon" href="favicon-de23e50b.svg">
         <link rel="shortcut icon" href="favicon-8114d1fc.png">
         <link rel="stylesheet" href="css/variables-8adf115d.css">
-        <link rel="stylesheet" href="css/general-2459343d.css">
-        <link rel="stylesheet" href="css/chrome-ae938929.css">
+        <link rel="stylesheet" href="css/general-0392ca55.css">
+        <link rel="stylesheet" href="css/chrome-fc474251.css">
         <link rel="stylesheet" href="css/print-9e4910d8.css" media="print">
 
         <!-- Fonts -->
@@ -35,10 +35,10 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-b1c210d5.js";
+            window.path_to_searchindex_js = "searchindex-05c88c01.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-6cd1cca1.js"></script>
+        <script src="toc-aee9c670.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -175,134 +175,51 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="api-contract"><a class="header" href="#api-contract">API Contract</a></h1>
-<p>This chapter records the intended public consumer surface of <code>parc</code>.</p>
-<p>It is not a blanket promise about every future change. It is the current
-guidance for how downstream tools should integrate with the crate without
-depending on parser internals or accidentally turning <code>parc</code> into a shared ABI
-owner for the rest of the pipeline.</p>
-<h2 id="first-principle"><a class="header" href="#first-principle">First Principle</a></h2>
-<p><code>parc</code> is the source-meaning layer of the pipeline: preprocessing, parsing, and
-source-level semantic extraction.</p>
-<p>The intended downstream pattern is:</p>
-<ol>
-<li>scan headers or parse source via <code>driver</code>, <code>scan</code>, or <code>parse</code></li>
-<li>extract normalized declarations via <code>extract</code></li>
-<li>consume the <code>SourcePackage</code> IR from <code>ir</code></li>
-<li>use <code>visit</code>, <code>span</code>, and <code>loc</code> to analyze AST-level details if needed</li>
-</ol>
-<p>Downstream consumers that want source contracts should depend on <code>parc::ir</code>,
-not on <code>parc::ast</code> directly.</p>
-<p>More importantly for this repository:</p>
-<ul>
-<li><code>parc</code> library code must not depend on <code>linc</code> or <code>gerc</code></li>
-<li><code>linc</code> and <code>gerc</code> should not require <code>parc</code> as a library dependency in their
-production code paths</li>
-<li>integration should happen through PARC-owned artifacts in tests/examples or
-external harnesses</li>
-<li>there is no shared ABI crate that all three libraries depend on</li>
-<li>there is no obligation to preserve discarded pipeline shapes for backward compatibility</li>
-</ul>
-<h2 id="preferred-public-surface"><a class="header" href="#preferred-public-surface">Preferred public surface</a></h2>
-<p>These are the main consumer-facing modules:</p>
+<h2 id="contract-producer"><a class="header" href="#contract-producer">Contract producer</a></h2>
+<p><code>parc::scan::scan_headers</code> is the only public header-to-contract route. Its
+<code>ScanConfig</code> requires explicit target, path mapping, preprocessor, environment,
+and source inputs. It returns <code>ScanReport</code>, whose diagnostics are the same
+fingerprinted diagnostics stored in <code>SourcePackage</code>.</p>
+<h2 id="artifact-surface"><a class="header" href="#artifact-surface">Artifact surface</a></h2>
+<p><code>parc::contract</code> exposes checked target/source values, canonical codec
+functions, selections, checked <code>retain</code>/<code>merge</code>, and completion checks.
+<code>SourcePackage</code> is immutable; callers cannot supply a cached fingerprint or
+deserialize the domain model directly.</p>
+<h2 id="syntax-surface"><a class="header" href="#syntax-surface">Syntax surface</a></h2>
+<p>Use these modules when a contract is not required:</p>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>Module</th><th>Role</th><th>Current expectation</th></tr>
+<tr><th>Module</th><th>Role</th></tr>
 </thead>
 <tbody>
-<tr><td><code>parc::ir</code></td><td>source-level IR (<code>SourcePackage</code>)</td><td><strong>preferred data contract</strong></td></tr>
-<tr><td><code>parc::extract</code></td><td>declaration extraction from AST</td><td>preferred extraction entry point</td></tr>
-<tr><td><code>parc::scan</code></td><td>header scanning (preprocess + extract)</td><td>preferred high-level entry point</td></tr>
-<tr><td><code>parc::intake</code></td><td>preprocessed source intake</td><td>preferred for already-preprocessed source</td></tr>
-<tr><td><code>parc::driver</code></td><td>parse files and preprocessed source</td><td>preferred parse entry point</td></tr>
-<tr><td><code>parc::preprocess</code></td><td>built-in C preprocessor</td><td>preferred preprocessing entry point</td></tr>
-<tr><td><code>parc::parse</code></td><td>parse string fragments directly</td><td>preferred low-level entry point</td></tr>
-<tr><td><code>parc::ast</code></td><td>typed syntax tree</td><td>internal data model</td></tr>
-<tr><td><code>parc::visit</code></td><td>recursive traversal hooks</td><td>preferred traversal API</td></tr>
-<tr><td><code>parc::span</code></td><td>byte-range metadata</td><td>preferred location primitive</td></tr>
-<tr><td><code>parc::loc</code></td><td>map offsets back to files/lines</td><td>preferred diagnostics helper</td></tr>
-<tr><td><code>parc::print</code></td><td>AST debug dumping</td><td>preferred inspection helper</td></tr>
+<tr><td><code>driver</code></td><td>external-preprocessor file parsing</td></tr>
+<tr><td><code>preprocess</code></td><td>builtin preprocessing primitives</td></tr>
+<tr><td><code>parse</code></td><td>strict or resilient parsing of controlled text</td></tr>
+<tr><td><code>ast</code></td><td>typed syntax tree</td></tr>
+<tr><td><code>visit</code></td><td>recursive traversal</td></tr>
+<tr><td><code>span</code>, <code>loc</code></td><td>source positions</td></tr>
+<tr><td><code>print</code></td><td>AST debugging</td></tr>
 </tbody>
 </table>
 </div>
-<h2 id="internal-modules-are-not-the-contract"><a class="header" href="#internal-modules-are-not-the-contract">Internal modules are not the contract</a></h2>
-<p>These modules are public only indirectly through behavior, not as a recommended downstream surface:</p>
-<ul>
-<li><code>parser</code></li>
-<li><code>env</code></li>
-<li><code>astutil</code></li>
-<li><code>strings</code></li>
-</ul>
-<p>If a downstream tool depends directly on how those modules work, it is probably coupling itself to
-implementation details rather than the intended library boundary.</p>
-<h2 id="normative-consumer-rules"><a class="header" href="#normative-consumer-rules">Normative consumer rules</a></h2>
-<p>If you are building on top of <code>parc</code>, the safest current rules are:</p>
+<p>The generated parser implementation, typedef environment, extractor, and
+canonical wire DTOs are internal.</p>
+<h2 id="consumer-rules"><a class="header" href="#consumer-rules">Consumer rules</a></h2>
 <ol>
-<li>use <code>driver</code> when preprocessing matters</li>
-<li>use <code>parse::*</code> for fragment parsing or already-controlled text inputs</li>
-<li>treat <code>ir::SourcePackage</code> as the primary output contract</li>
-<li>use <code>visit</code> for traversal instead of hand-rolling recursive descent everywhere</li>
-<li>use <code>span</code> and <code>loc</code> for diagnostics rather than guessing source positions</li>
-<li>do not rely on exact error-message strings for durable control flow</li>
-<li>do not treat PARC as semantic analysis, type checking, or ABI proof</li>
-<li>if another crate needs PARC output, serialize the PARC-owned artifact and
-translate it outside library code</li>
+<li>Never guess a host target or compiler identity.</li>
+<li>Never concatenate unrelated entry headers into one scan translation unit;
+merge only checked packages with compatible target and source identity.</li>
+<li>Check <code>Completeness</code> and declaration <code>SupportStatus</code> before consumption.</li>
+<li>Treat ranges and provenance according to their recorded file and origin.</li>
+<li>Decode/encode artifacts only through the contract codec.</li>
+<li>Keep layout, symbol, link, and Rust-generation facts in downstream owners.</li>
+<li>Treat parser recovery and unsupported syntax as structured outcomes.</li>
 </ol>
-<h2 id="what-is-part-of-the-practical-contract"><a class="header" href="#what-is-part-of-the-practical-contract">What is part of the practical contract</a></h2>
-<p>Today the strongest practical contract is:</p>
-<ul>
-<li><code>ir::SourcePackage</code>, <code>SourceType</code>, <code>SourceItem</code>, and all IR types — the primary data contract</li>
-<li><code>extract::extract_from_source</code>, <code>extract_from_translation_unit</code>, <code>parse_and_extract</code>, <code>parse_and_extract_resilient</code></li>
-<li><code>scan::ScanConfig</code>, <code>scan_headers</code>, <code>ScanResult</code></li>
-<li><code>intake::PreprocessedInput</code></li>
-<li><code>ir::SourcePackageBuilder</code> — programmatic package construction</li>
-<li><code>driver::Config</code>, <code>Flavor</code>, <code>Parse</code>, <code>Error</code>, <code>SyntaxError</code>, <code>parse_builtin</code>, and <code>capture_macros</code></li>
-<li><code>preprocess::{Processor, IncludeResolver, MacroTable, Lexer, preprocess, tokens_to_text, Target, define_target_macros}</code></li>
-<li><code>parse::{constant, expression, declaration, statement, translation_unit, translation_unit_resilient}</code></li>
-<li>the AST model under <code>ast</code></li>
-<li>the traversal hooks under <code>visit</code></li>
-<li>the span/location model under <code>span</code> and <code>loc</code></li>
-</ul>
-<p>Those are the surfaces the rest of the book assumes consumers will use.</p>
-<p>The important correction is this: PARC has two practical contracts today, not
-one:</p>
-<ol>
-<li>a source-contract path centered on <code>ir</code>, <code>extract</code>, and <code>scan</code></li>
-<li>a parser-facing path centered on <code>driver</code>, <code>parse</code>, <code>ast</code>, and <code>visit</code></li>
-</ol>
-<p>The docs should not pretend the AST side does not exist, because the crate
-very much exposes it.</p>
-<h2 id="what-is-intentionally-weaker"><a class="header" href="#what-is-intentionally-weaker">What is intentionally weaker</a></h2>
-<p>The following should be treated as less stable than the core parsing surface:</p>
-<ul>
-<li>exact debug formatting of AST values</li>
-<li>exact <code>Display</code> wording of parse errors</li>
-<li>internal parser file layout under <code>src/parser/</code></li>
-<li>incidental ordering of implementation helper functions</li>
-</ul>
-<p>These details are useful for debugging and contribution work, but they are not the main consumer
-contract.</p>
-<h2 id="explicit-non-goals"><a class="header" href="#explicit-non-goals">Explicit non-goals</a></h2>
-<p>The current contract does not promise:</p>
-<ul>
-<li>semantic name resolution beyond parsing decisions such as typedef handling</li>
-<li>type checking</li>
-<li>ABI compatibility guarantees</li>
-<li>full support for every GCC or Clang extension</li>
-<li>preservation of raw macro definitions beyond what <code>capture_macros</code> provides</li>
-</ul>
-<p>Those are outside the scope of PARC as a source frontend.</p>
-<h2 id="downstream-posture"><a class="header" href="#downstream-posture">Downstream posture</a></h2>
-<p>For long-lived integrations, the safest posture is:</p>
-<ol>
-<li>use <code>scan</code> or <code>extract</code> as your primary entry point — these produce <code>SourcePackage</code></li>
-<li>consume <code>ir::SourcePackage</code> rather than raw AST types where possible</li>
-<li>use <code>driver</code> and <code>parse</code> only when you need AST-level access</li>
-<li>treat unsupported syntax and parser errors as normal outcomes</li>
-<li>keep tests with representative preprocessed inputs for the syntax families you depend on</li>
-<li>keep cross-package translation in tests/examples/harnesses rather than adding library dependencies</li>
-<li>see <a href="./210_migration_from_bic.html">Migration From bic</a> if you are transitioning from <code>bic</code></li>
-</ol>
+<p>Generated external-preprocessor scans are intentionally partial. Built-in scans
+may be complete only when their traced, bounded preprocessing and lowering emit
+no forcing gap. Callers must check the artifact rather than special-case a mode
+or diagnostic away.</p>
 
                     </main>
 
@@ -348,11 +265,11 @@ contract.</p>
 
         <script src="elasticlunr-ef4e11c1.min.js"></script>
         <script src="mark-09e88c2c.min.js"></script>
-        <script src="searcher-c2a407aa.js"></script>
+        <script src="searcher-09f2665d.js"></script>
 
         <script src="clipboard-1626706a.min.js"></script>
         <script src="highlight-abc7f01d.js"></script>
-        <script src="book-a0b12cfe.js"></script>
+        <script src="book-c22b7243.js"></script>
 
         <!-- Custom JS scripts -->
 

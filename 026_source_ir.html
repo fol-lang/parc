@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Source IR - PARC Reference</title>
+        <title>Source Contract - PARC Reference</title>
 
 
         <!-- Custom HTML head -->
@@ -15,8 +15,8 @@
         <link rel="icon" href="favicon-de23e50b.svg">
         <link rel="shortcut icon" href="favicon-8114d1fc.png">
         <link rel="stylesheet" href="css/variables-8adf115d.css">
-        <link rel="stylesheet" href="css/general-2459343d.css">
-        <link rel="stylesheet" href="css/chrome-ae938929.css">
+        <link rel="stylesheet" href="css/general-0392ca55.css">
+        <link rel="stylesheet" href="css/chrome-fc474251.css">
         <link rel="stylesheet" href="css/print-9e4910d8.css" media="print">
 
         <!-- Fonts -->
@@ -35,10 +35,10 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-b1c210d5.js";
+            window.path_to_searchindex_js = "searchindex-05c88c01.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-6cd1cca1.js"></script>
+        <script src="toc-aee9c670.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -174,84 +174,39 @@
 
                 <div id="mdbook-content" class="content">
                     <main>
-                        <h1 id="source-ir"><a class="header" href="#source-ir">Source IR</a></h1>
-<p>The <code>parc::ir</code> module defines the durable intermediate representation produced
-by the PARC frontend. It is the primary contract between the parser/extractor
-and downstream consumers (LINC, GERC).</p>
-<h2 id="design-principles"><a class="header" href="#design-principles">Design Principles</a></h2>
+                        <h1 id="source-contract"><a class="header" href="#source-contract">Source Contract</a></h1>
+<p><code>parc::contract</code> is the parser-independent schema-v2 boundary. Its domain model
+is immutable and cannot be deserialized or patched directly.</p>
+<h2 id="main-values"><a class="header" href="#main-values">Main values</a></h2>
 <ul>
-<li><strong>Smaller than the AST</strong>: only normalized declarations, not the full syntax tree</li>
-<li><strong>Serializable</strong>: all types derive <code>serde::Serialize</code> and <code>serde::Deserialize</code></li>
-<li><strong>Parser-agnostic</strong>: downstream consumers should depend on <code>parc::ir</code>, not <code>parc::ast</code></li>
-<li><strong>No link/binary concerns</strong>: no ABI probing, no library paths, no symbol validation</li>
+<li><code>TargetSpec</code> records checked compiler, target, language, extension, C
+data-model, sysroot, and ordered ABI-argument facts.</li>
+<li><code>SourcePackage</code> contains files, effective source inputs, declarations,
+macros, diagnostics, completeness, and a derived source fingerprint.</li>
+<li><code>SourceDeclaration</code> represents functions, records, enums, aliases,
+variables, and explicitly unsupported declarations.</li>
+<li><code>CType</code> preserves source type structure, qualifiers, nullability, references,
+arrays, function types, and support state.</li>
+<li><code>SourceRange</code> always refers to a file in the package table.</li>
 </ul>
-<h2 id="key-types"><a class="header" href="#key-types">Key Types</a></h2>
-<h3 id="sourcepackage"><a class="header" href="#sourcepackage"><code>SourcePackage</code></a></h3>
-<p>The top-level container:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use parc::ir::SourcePackage;
+<p>Measured record layout, field offsets, enum representation, symbols, and link
+facts are deliberately absent.</p>
+<h2 id="checked-construction-and-decoding"><a class="header" href="#checked-construction-and-decoding">Checked construction and decoding</a></h2>
+<p><code>SourcePackage::try_new</code> validates all cross-references and canonical ordering
+before deriving the package fingerprint. Normal consumers receive a package
+from <code>scan_headers</code> or decode a canonical envelope:</p>
+<pre><code class="language-rust ignore">use parc::contract::{decode_source_package, encode_source_package};
 
-let pkg = SourcePackage::new();
-assert!(pkg.is_empty());
-<span class="boring">}</span></code></pre>
-<h3 id="sourcetype"><a class="header" href="#sourcetype"><code>SourceType</code></a></h3>
-<p>Represents C types at source level:</p>
-<pre><code class="language-text">Void, Bool, Char, SChar, UChar, Short, UShort,
-Int, UInt, Long, ULong, LongLong, ULongLong,
-Float, Double, LongDouble, Int128, UInt128,
-Pointer, Array, Qualified, FunctionPointer,
-TypedefRef, RecordRef, EnumRef, Opaque
-</code></pre>
-<h3 id="sourceitem"><a class="header" href="#sourceitem"><code>SourceItem</code></a></h3>
-<p>One extracted declaration:</p>
-<ul>
-<li><code>Function</code> — function declaration with name, parameters, return type, calling convention</li>
-<li><code>Record</code> — struct/union with optional fields</li>
-<li><code>Enum</code> — enum with named variants and optional values</li>
-<li><code>TypeAlias</code> — typedef declaration</li>
-<li><code>Variable</code> — extern variable declaration</li>
-<li><code>Unsupported</code> — placeholder for unrepresentable declarations</li>
-</ul>
-<h3 id="sourcemacro"><a class="header" href="#sourcemacro"><code>SourceMacro</code></a></h3>
-<p>Captured preprocessor macro with form (object-like/function-like), kind, and optional parsed value.</p>
-<h3 id="sourcediagnostic"><a class="header" href="#sourcediagnostic"><code>SourceDiagnostic</code></a></h3>
-<p>Frontend diagnostic with kind, severity, message, optional location, and optional item name.</p>
-<h3 id="provenance"><a class="header" href="#provenance">Provenance</a></h3>
-<ul>
-<li><code>SourceOrigin</code> — where a declaration came from (Entry, UserInclude, System, Unknown)</li>
-<li><code>DeclarationProvenance</code> — per-item provenance metadata</li>
-<li><code>MacroProvenance</code> — per-macro provenance metadata</li>
-<li><code>SourceTarget</code> — compiler/target identity</li>
-<li><code>SourceInputs</code> — entry headers, include dirs, defines</li>
-</ul>
-<h2 id="json-serialization"><a class="header" href="#json-serialization">JSON Serialization</a></h2>
-<p>All IR types support JSON roundtrip:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use parc::ir::SourcePackage;
-
-let pkg = SourcePackage::new();
-let json = serde_json::to_string_pretty(&amp;pkg).unwrap();
-let back: SourcePackage = serde_json::from_str(&amp;json).unwrap();
-assert_eq!(pkg, back);
-<span class="boring">}</span></code></pre>
-<h2 id="querying"><a class="header" href="#querying">Querying</a></h2>
-<p><code>SourcePackage</code> provides typed accessors:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>// pkg.functions()      -&gt; Iterator&lt;Item = &amp;SourceFunction&gt;
-// pkg.records()        -&gt; Iterator&lt;Item = &amp;SourceRecord&gt;
-// pkg.enums()          -&gt; Iterator&lt;Item = &amp;SourceEnum&gt;
-// pkg.type_aliases()   -&gt; Iterator&lt;Item = &amp;SourceTypeAlias&gt;
-// pkg.variables()      -&gt; Iterator&lt;Item = &amp;SourceVariable&gt;
-// pkg.unsupported_items() -&gt; ...
-// pkg.find_function("malloc")
-// pkg.find_record("point")
-// pkg.find_enum("color")
-// pkg.find_type_alias("size_t")
-// pkg.find_variable("errno")
-<span class="boring">}</span></code></pre>
+let package = decode_source_package(bytes)?;
+let canonical = encode_source_package(&amp;package)?;</code></pre>
+<p>The domain type does not implement <code>Deserialize</code>. The decoder validates schema
+identity, target identity, IDs, ranges, provenance, completeness, and the
+stored fingerprint.</p>
+<h2 id="completeness"><a class="header" href="#completeness">Completeness</a></h2>
+<p><code>Completeness</code> is <code>Complete</code>, <code>Partial</code>, or <code>Rejected</code>. A partial or rejected
+package carries exact reasons derived from forcing diagnostics. Use
+<code>SourcePackage::into_complete</code> (or <code>ScanReport::into_complete</code>) with a
+<code>Selection</code>; never infer completeness from an empty error list.</p>
 
                     </main>
 
@@ -297,11 +252,11 @@ assert_eq!(pkg, back);
 
         <script src="elasticlunr-ef4e11c1.min.js"></script>
         <script src="mark-09e88c2c.min.js"></script>
-        <script src="searcher-c2a407aa.js"></script>
+        <script src="searcher-09f2665d.js"></script>
 
         <script src="clipboard-1626706a.min.js"></script>
         <script src="highlight-abc7f01d.js"></script>
-        <script src="book-a0b12cfe.js"></script>
+        <script src="book-c22b7243.js"></script>
 
         <!-- Custom JS scripts -->
 

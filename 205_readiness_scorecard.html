@@ -15,8 +15,8 @@
         <link rel="icon" href="favicon-de23e50b.svg">
         <link rel="shortcut icon" href="favicon-8114d1fc.png">
         <link rel="stylesheet" href="css/variables-8adf115d.css">
-        <link rel="stylesheet" href="css/general-2459343d.css">
-        <link rel="stylesheet" href="css/chrome-ae938929.css">
+        <link rel="stylesheet" href="css/general-0392ca55.css">
+        <link rel="stylesheet" href="css/chrome-fc474251.css">
         <link rel="stylesheet" href="css/print-9e4910d8.css" media="print">
 
         <!-- Fonts -->
@@ -35,10 +35,10 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-b1c210d5.js";
+            window.path_to_searchindex_js = "searchindex-05c88c01.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-6cd1cca1.js"></script>
+        <script src="toc-aee9c670.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -175,56 +175,44 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="readiness-scorecard"><a class="header" href="#readiness-scorecard">Readiness Scorecard</a></h1>
-<p>This chapter ties PARC readiness to real suites instead of vague confidence
-claims.</p>
-<h2 id="overall-posture"><a class="header" href="#overall-posture">Overall Posture</a></h2>
-<p>PARC should currently be read as:</p>
+<h2 id="current-posture"><a class="header" href="#current-posture">Current posture</a></h2>
+<p>PARC has a checked schema-v2 contract and a deterministic, resource-bounded H2
+producer for one explicitly configured translation unit. Parser/AST coverage is
+broader than the certified contract-producing preprocessing subset.</p>
+<p>Built-in scans may be complete when original files, ranges, includes, macros,
+and expansions are traced and every declaration/type is modeled. External
+scans remain generated-source <code>Partial</code>; <code>PARC-P0001</code> makes that provenance
+boundary machine-checkable.</p>
+<h2 id="evidence-by-subsystem"><a class="header" href="#evidence-by-subsystem">Evidence by subsystem</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Subsystem</th><th>Posture</th></tr>
+</thead>
+<tbody>
+<tr><td>Contract schema, codec, IDs, and validation</td><td>Frozen schema-v2 evidence</td></tr>
+<tr><td>Explicit scan configuration and relocation</td><td>H2 bounded deterministic evidence</td></tr>
+<tr><td>Two-pass declaration/type lowering</td><td>Exact-type fixtures; unsupported paths remain diagnostic</td></tr>
+<tr><td>Parser, AST traversal, and printing</td><td>Broad repository fixtures</td></tr>
+<tr><td>Built-in preprocessing</td><td>Controlled fixtures; not universal host-header parity</td></tr>
+<tr><td>Original include/macro provenance</td><td>Traced for the certified built-in subset</td></tr>
+<tr><td>Complete contract macro inventory</td><td>Effective active built-in definitions; external remains unproved</td></tr>
+<tr><td>Cross-translation-unit merge semantics</td><td>Checked target/input compatibility and stable-ID conflict rejection</td></tr>
+<tr><td>Resource safety</td><td>Producer ceilings plus external process-group timeout/output enforcement</td></tr>
+<tr><td>ABI layout, symbols, linking, Rust generation</td><td>Downstream ownership</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="what-raises-readiness"><a class="header" href="#what-raises-readiness">What raises readiness</a></h2>
+<p>Readiness increases only when evidence closes a forcing gap, for example:</p>
 <ul>
-<li>strong on parser and extraction fundamentals</li>
-<li>strong on scan-first vendored baselines</li>
-<li>materially stronger on hostile real-world builtin-preprocessor corners</li>
-<li>intentionally conservative when a large header family cannot be modeled
-honestly</li>
+<li>broader certified compiler-extension and system-header coverage;</li>
+<li>more target families with compiler-backed parity fixtures;</li>
+<li>broader adversarial declaration/type preservation;</li>
+<li>downstream integration using only canonical serialized artifacts.</li>
 </ul>
-<p>For Level 1 production, PARC should be read as Linux/ELF-first and
-canonical-corpus-backed, not as a universal frontend for arbitrary C headers.</p>
-<p>For whole-pipeline claims, this score is also capped by downstream <code>gerc</code>
-anchors that ingest translated PARC source surfaces in tests/examples.</p>
-<p>That is good progress, but it is not the same thing as “finished for every C
-header in the wild”.</p>
-<h2 id="subsystem-scorecard"><a class="header" href="#subsystem-scorecard">Subsystem Scorecard</a></h2>
-<ul>
-<li>parser entrypoints: high</li>
-<li>AST traversal and printing: high</li>
-<li>extraction to <code>SourcePackage</code>: high</li>
-<li>scan-first vendored baselines: high</li>
-<li>hostile-header recovery: medium-high</li>
-<li>built-in preprocessor coverage on ugly system headers: medium-high</li>
-<li>large host-dependent wrapper extraction: medium-high</li>
-<li>deterministic behavior on canonical large surfaces: high</li>
-</ul>
-<h2 id="canonical-readiness-anchors"><a class="header" href="#canonical-readiness-anchors">Canonical Readiness Anchors</a></h2>
-<p>The release posture should be judged against these anchors first:</p>
-<ul>
-<li>vendored musl <code>stdint</code></li>
-<li>vendored zlib</li>
-<li>vendored libpng scan</li>
-<li>repo-owned <code>macro_env_a</code></li>
-<li>repo-owned <code>type_env_b</code></li>
-<li>OpenSSL public wrapper extraction</li>
-<li>combined Linux event-loop wrapper extraction</li>
-</ul>
-<p>If those anchors stay green and deterministic, PARC is earning trust. If they
-drift, the scorecard should be lowered even if many smaller tests still pass.</p>
-<h2 id="what-would-raise-readiness-further"><a class="header" href="#what-would-raise-readiness-further">What Would Raise Readiness Further</a></h2>
-<p>The next meaningful gains would be:</p>
-<ul>
-<li>broader built-in-preprocessor coverage on other hostile width and platform
-gates beyond the libpng family</li>
-<li>more ugly combined system-header clusters</li>
-<li>more repeat-run deterministic scans on large host-dependent surfaces</li>
-<li>clearer unsupported-case diagnostics for the remaining difficult families</li>
-</ul>
+<p>Parser success or a large fixture count alone cannot upgrade a partial scan to
+complete.</p>
 
                     </main>
 
@@ -234,7 +222,7 @@ gates beyond the libpng family</li>
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                             </a>
 
-                            <a rel="next prefetch" href="210_migration_from_bic.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="210_contract_migration.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                             </a>
 
@@ -248,7 +236,7 @@ gates beyond the libpng family</li>
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                     </a>
 
-                    <a rel="next prefetch" href="210_migration_from_bic.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="210_contract_migration.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                     </a>
             </nav>
@@ -270,11 +258,11 @@ gates beyond the libpng family</li>
 
         <script src="elasticlunr-ef4e11c1.min.js"></script>
         <script src="mark-09e88c2c.min.js"></script>
-        <script src="searcher-c2a407aa.js"></script>
+        <script src="searcher-09f2665d.js"></script>
 
         <script src="clipboard-1626706a.min.js"></script>
         <script src="highlight-abc7f01d.js"></script>
-        <script src="book-a0b12cfe.js"></script>
+        <script src="book-c22b7243.js"></script>
 
         <!-- Custom JS scripts -->
 

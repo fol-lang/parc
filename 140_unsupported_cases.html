@@ -15,8 +15,8 @@
         <link rel="icon" href="favicon-de23e50b.svg">
         <link rel="shortcut icon" href="favicon-8114d1fc.png">
         <link rel="stylesheet" href="css/variables-8adf115d.css">
-        <link rel="stylesheet" href="css/general-2459343d.css">
-        <link rel="stylesheet" href="css/chrome-ae938929.css">
+        <link rel="stylesheet" href="css/general-0392ca55.css">
+        <link rel="stylesheet" href="css/chrome-fc474251.css">
         <link rel="stylesheet" href="css/print-9e4910d8.css" media="print">
 
         <!-- Fonts -->
@@ -35,10 +35,10 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-b1c210d5.js";
+            window.path_to_searchindex_js = "searchindex-05c88c01.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-6cd1cca1.js"></script>
+        <script src="toc-aee9c670.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -174,123 +174,68 @@
 
                 <div id="mdbook-content" class="content">
                     <main>
-                        <h1 id="unsupported-cases"><a class="header" href="#unsupported-cases">Unsupported Cases</a></h1>
-<p>This chapter records the important unsupported or intentionally out-of-scope
-areas.</p>
-<p>The goal is to prevent downstream users from mistaking absence of detail for
-implicit support.</p>
-<p>It also acts as the current frontend-family closure ledger. Every hard family
-should fit into one of these buckets:</p>
-<ul>
-<li>fully supported</li>
-<li>resilient-only support</li>
-<li>diagnostics-only improvement</li>
-<li>intentional rejection</li>
-</ul>
-<p>For the Level 1 production claim, this ledger is part of the real contract.
-If a family is not classified here, it should not be treated as in-scope
-production behavior.</p>
-<h2 id="frontend-family-closure-ledger"><a class="header" href="#frontend-family-closure-ledger">Frontend-Family Closure Ledger</a></h2>
-<p>The current important families are:</p>
+                        <h1 id="unsupported-and-partial-cases"><a class="header" href="#unsupported-and-partial-cases">Unsupported and Partial Cases</a></h1>
+<p>Absence of a field is never evidence of support. Consumers must read package
+<code>Completeness</code>, declaration and type <code>SupportStatus</code>, and structured
+diagnostics together.</p>
+<h2 id="current-closure-ledger"><a class="header" href="#current-closure-ledger">Current closure ledger</a></h2>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>Family</th><th>Current state</th><th>Notes</th></tr>
+<tr><th>Family</th><th>Current state</th><th>Boundary</th></tr>
 </thead>
 <tbody>
-<tr><td>K&amp;R function declarations</td><td>diagnostics-only improvement</td><td>PARC preserves the function surface and emits explicit unsupported diagnostics.</td></tr>
-<tr><td>block pointers</td><td>intentional rejection</td><td>They still fail in parsing; current work is about sharper diagnostics, not pretending they lower cleanly.</td></tr>
-<tr><td>bitfield-heavy records</td><td>resilient-only support</td><td>PARC keeps record shape and bit widths, but layout truth remains partial.</td></tr>
-<tr><td>vendor attributes and calling-convention attributes</td><td>resilient-only support</td><td>PARC preserves the declaration and emits partial diagnostics when attributes are ignored.</td></tr>
-<tr><td>macro-heavy include stacks</td><td>fully supported on current canonical corpora</td><td>The canonical corpora are the proof surface; more corpora still need to land before claiming broad closure.</td></tr>
-<tr><td>hostile include-order and typedef-chain environments</td><td>fully supported on current canonical corpora</td><td>Treat this as corpus-backed support, not universal extension parity.</td></tr>
+<tr><td>K&amp;R function declarators</td><td>Unsupported</td><td>Preserved as unsupported source structure; no guessed modern prototype</td></tr>
+<tr><td>Block pointers</td><td>Unsupported or recovered</td><td>Not lowered as ordinary C function pointers</td></tr>
+<tr><td>Bitfields</td><td>Source width preserved</td><td>Measured allocation/layout remains downstream</td></tr>
+<tr><td>Known calling conventions</td><td>Modeled when unambiguous</td><td>Malformed or conflicting attributes force rejection</td></tr>
+<tr><td><code>visibility</code> attributes</td><td>Modeled when exact</td><td>Unknown values, malformed arguments, or conflicts force rejection</td></tr>
+<tr><td>Other ABI-relevant attributes</td><td>Partial</td><td>Spelling/range is preserved and <code>PARC-P1205</code> forces partial completeness</td></tr>
+<tr><td>Macro-heavy include stacks</td><td>Mode-dependent</td><td>Certified built-in constructs are traced; unsupported operators reject and external output remains provenance-partial</td></tr>
+<tr><td>Cross-translation-unit declarations</td><td>Checked composition only</td><td>Each scan has one entry; <code>merge</code> requires target/input compatibility and rejects stable-ID conflicts</td></tr>
 </tbody>
 </table>
 </div>
-<p>This ledger is intentionally blunt:</p>
-<ul>
-<li>if a family is not yet honestly representable, reject it</li>
-<li>if a family is only partially representable, say so</li>
-<li>if a family is only proven on named corpora, document that exact scope</li>
-</ul>
-<p>The Level 1 production envelope is Linux/ELF-first and corpus-backed. That
-means “supported” here should be read as one of:</p>
-<ul>
-<li>fully supported within the named canonical corpus</li>
-<li>partially supported with explicit diagnostics</li>
-<li>rejected explicitly as out of scope</li>
-</ul>
-<h2 id="semantic-analysis"><a class="header" href="#semantic-analysis">Semantic analysis</a></h2>
-<p>PARC does not provide:</p>
-<ul>
-<li>full name resolution</li>
-<li>type checking</li>
-<li>constant folding as a stable analysis contract</li>
-<li>ABI or layout proof</li>
-<li>compiler-quality warnings</li>
-</ul>
-<p>It is a parser with source-structure support, not a complete compiler frontend.</p>
+<p>Named parser corpora demonstrate behavior on those fixtures only. They do not
+upgrade an external scan to complete provenance or establish universal
+compiler/SDK compatibility.</p>
+<h2 id="semantic-boundary"><a class="header" href="#semantic-boundary">Semantic boundary</a></h2>
+<p>PARC preserves source declarations and performs conservative compatibility
+checks for redeclarations. It is not a full name resolver, type checker, layout
+engine, linker, or compiler-quality warning system. Record offsets, enum object
+representation, symbols, and linkability belong to later evidence owners.</p>
 <h2 id="preprocessing"><a class="header" href="#preprocessing">Preprocessing</a></h2>
-<p>PARC does not implement a standalone C preprocessor in the <code>driver</code> path.</p>
-<p>Instead it depends on an external preprocessor command such as:</p>
-<ul>
-<li><code>gcc -E</code></li>
-<li><code>clang -E</code></li>
-</ul>
-<p>That means PARC does not try to normalize every compiler’s preprocessing
-behavior internally.</p>
-<p>The built-in preprocessor is increasingly useful for scan-first workflows, but
-it is still a scoped compatibility surface rather than a promise of universal
-host-header parity.</p>
-<h2 id="extension-completeness"><a class="header" href="#extension-completeness">Extension completeness</a></h2>
-<p>PARC supports several GNU and Clang extensions, but the project does not promise
-complete parity with every extension accepted by modern GCC or Clang releases.</p>
-<p>Downstream tools should not assume:</p>
-<ul>
-<li>full GNU extension completeness</li>
-<li>full Clang extension completeness</li>
-<li>identical acceptance behavior across all compiler-version-specific syntax edges</li>
-</ul>
-<h2 id="macro-inventory-and-expansion-modeling"><a class="header" href="#macro-inventory-and-expansion-modeling">Macro inventory and expansion modeling</a></h2>
-<p>PARC parses the post-preprocessing result. It does not expose a first-class macro inventory or a
-stable semantic model of macro definitions as its own output contract.</p>
-<p>If you need macro capture as data, that is outside PARC’s current scope.</p>
-<h2 id="translation-unit-semantics"><a class="header" href="#translation-unit-semantics">Translation-unit semantics</a></h2>
-<p>PARC can parse translation units, but it does not guarantee:</p>
-<ul>
-<li>cross-file symbol resolution</li>
-<li>duplicate-definition analysis as a stable feature</li>
-<li>semantic correctness of declarations</li>
-<li>linkability of parsed declarations</li>
-</ul>
-<p>Those tasks belong to later analysis layers, not the parser itself.</p>
-<h2 id="diagnostics-depth"><a class="header" href="#diagnostics-depth">Diagnostics depth</a></h2>
-<p>PARC does not currently provide:</p>
-<ul>
-<li>warning classes</li>
-<li>fix-it suggestions</li>
-<li>rich categorized error codes</li>
-<li>a stable diagnostic JSON schema</li>
-</ul>
-<p>The current error model is strong enough for syntax handling, not full compiler
-UX.</p>
-<p>The practical rule for the remaining hard families is:</p>
-<ul>
-<li>if PARC can keep a trustworthy declaration surface, it should do so and emit
-diagnostics</li>
-<li>if PARC cannot keep a trustworthy declaration surface, it should reject the
-construct explicitly</li>
-</ul>
-<h2 id="consumer-guidance"><a class="header" href="#consumer-guidance">Consumer guidance</a></h2>
-<p>Downstream tools should treat these gaps as explicit non-guarantees.</p>
-<p>That means:</p>
-<ul>
-<li>build policy around syntax success and failure, not semantic certainty</li>
-<li>isolate extension-heavy assumptions behind tests</li>
-<li>keep representative preprocessed fixtures for any hard parser dependency</li>
-<li>treat the closure ledger above as part of the real contract, not as a vague
-future roadmap</li>
-</ul>
+<p>Scanning supports an explicit built-in mode and a fingerprint-checked external
+executable. The built-in implementation is a controlled compatibility surface,
+not a complete substitute for every compiler preprocessor. The older <code>driver</code>
+APIs remain syntax-oriented parsing helpers and do not create a checked source
+contract.</p>
+<h2 id="macro-inventory-and-provenance"><a class="header" href="#macro-inventory-and-provenance">Macro inventory and provenance</a></h2>
+<p>Schema v2 has a first-class macro table and macro-provenance types. The traced
+built-in <code>scan_headers</code> producer records the final effective macro definitions
+and original definition/invocation ranges. It rejects unsupported <code>#</code>/<code>##</code> and
+ambiguous redefinitions rather than fabricating values. External preprocessing
+cannot prove the same source history, so <code>PARC-P0001</code> records that gap and
+forces <code>Completeness::Partial</code>.</p>
+<p>Driver utilities may inspect active preprocessing macros, but their output is
+not a substitute for checked <code>SourcePackage</code> macro evidence.</p>
+<h2 id="extensions"><a class="header" href="#extensions">Extensions</a></h2>
+<p>GNU and Clang parser profiles cover maintained syntax families, not every
+version-specific extension. Unknown ABI-relevant declaration attributes are
+retained with ranges and partial support; constructs that cannot be represented
+without guessing are rejected or recovered with diagnostics.</p>
+<h2 id="diagnostics"><a class="header" href="#diagnostics">Diagnostics</a></h2>
+<p>Schema-v2 packages contain stable categorized <code>SourceDiagnostic</code> values with
+stage, severity, completeness impact, range, target, and optional declaration
+ownership. They do not currently promise compiler-style fix-its or exhaustive
+warning policy. Parser recovery and unsupported lowering are explicit trust
+outcomes, not silent success.</p>
+<h2 id="consumer-rule"><a class="header" href="#consumer-rule">Consumer rule</a></h2>
+<p>Use <code>ScanReport::into_complete</code> or <code>SourcePackage::into_complete</code> with an
+explicit <code>Selection</code>. Do not special-case away forcing diagnostics, infer
+completeness from parser success, or concatenate independent entry headers into
+a single translation unit. Use checked package <code>merge</code> only when its target and
+source-input compatibility checks succeed.</p>
 
                     </main>
 
@@ -336,11 +281,11 @@ future roadmap</li>
 
         <script src="elasticlunr-ef4e11c1.min.js"></script>
         <script src="mark-09e88c2c.min.js"></script>
-        <script src="searcher-c2a407aa.js"></script>
+        <script src="searcher-09f2665d.js"></script>
 
         <script src="clipboard-1626706a.min.js"></script>
         <script src="highlight-abc7f01d.js"></script>
-        <script src="book-a0b12cfe.js"></script>
+        <script src="book-c22b7243.js"></script>
 
         <!-- Custom JS scripts -->
 

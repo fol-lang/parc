@@ -15,8 +15,8 @@
         <link rel="icon" href="favicon-de23e50b.svg">
         <link rel="shortcut icon" href="favicon-8114d1fc.png">
         <link rel="stylesheet" href="css/variables-8adf115d.css">
-        <link rel="stylesheet" href="css/general-2459343d.css">
-        <link rel="stylesheet" href="css/chrome-ae938929.css">
+        <link rel="stylesheet" href="css/general-0392ca55.css">
+        <link rel="stylesheet" href="css/chrome-fc474251.css">
         <link rel="stylesheet" href="css/print-9e4910d8.css" media="print">
 
         <!-- Fonts -->
@@ -35,10 +35,10 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-b1c210d5.js";
+            window.path_to_searchindex_js = "searchindex-05c88c01.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-6cd1cca1.js"></script>
+        <script src="toc-aee9c670.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -187,9 +187,14 @@ PARC actually produces today: either a parsed AST or a <code>SourcePackage</code
 and any cross-package translation belongs only in tests, examples, or external
 harnesses.</p>
 <h2 id="add-the-crate"><a class="header" href="#add-the-crate">Add the crate</a></h2>
+<p>For a repository development checkout, spell both package and library
+identities explicitly:</p>
 <pre><code class="language-toml">[dependencies]
-parc = { path = "../parc" }
+parc = { package = "follang-parc", path = "../parc" }
 </code></pre>
+<p>Registry publication is disabled. Released consumers must use the exact tested
+Git tag/archive described by the release policy rather than inventing a
+registry version or following an unpinned branch.</p>
 <h2 id="pick-the-right-api-first"><a class="header" href="#pick-the-right-api-first">Pick the right API first</a></h2>
 <p>Use <code>parc::driver</code> when you have a file on disk and want PARC to run a system
 preprocessor first.</p>
@@ -253,18 +258,26 @@ fn main() -&gt; Result&lt;(), parc::driver::Error&gt; {
     Ok(())
 }</code></pre>
 <h2 id="first-useful-scan-example"><a class="header" href="#first-useful-scan-example">First useful scan example</a></h2>
-<p>If what you really want is source IR rather than a raw AST, start with
+<p>If what you really want is the checked source contract rather than a raw AST, start with
 <code>parc::scan</code>:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>use parc::scan::{scan_headers, ScanConfig};
+</span>use parc::scan::{
+    scan_headers, PathMapping, PathMappingRule, PreprocessorMode, ScanConfig,
+};
 
-let config = ScanConfig::new().entry_header("demo.h");
-let result = scan_headers(&amp;config).unwrap();
+// `checked_target` is an application-provided, validated TargetSpec.
+let rule = PathMappingRule::try_new(&amp;workspace_root, "workspace")?;
+let mapping = PathMapping::try_new([rule])?;
+let config = ScanConfig::new(checked_target, mapping, PreprocessorMode::Builtin)?
+    .entry_header(workspace_root.join("demo.h"));
+let report = scan_headers(&amp;config)?;
 
-println!("items: {}", result.package.items.len());
+println!("declarations: {}", report.package().declarations().len());
 <span class="boring">}</span></code></pre>
-<p>This is the closest thing PARC has to a “frontend product” API.</p>
+<p>There is no host-derived scan configuration: target identity, path mapping,
+preprocessor mode, environment policy, and the single translation-unit entry
+are explicit inputs.</p>
 <h2 id="first-fragment-example"><a class="header" href="#first-fragment-example">First fragment example</a></h2>
 <p>If you only need one declaration or statement, the direct parser API is faster to wire in:</p>
 <pre class="playground"><code class="language-rust">use parc::driver::Flavor;
@@ -292,7 +305,7 @@ fn main() {
 <li>parsing</li>
 <li>source extraction</li>
 <li>source diagnostics</li>
-<li>the <code>parc::ir::SourcePackage</code> artifact</li>
+<li>the checked <code>parc::contract::SourcePackage</code> artifact</li>
 </ul>
 <p>It does not own:</p>
 <ul>
@@ -309,7 +322,7 @@ or external harnesses.</p>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="parc.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="005_hardening_status.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                             </a>
 
@@ -323,7 +336,7 @@ or external harnesses.</p>
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="parc.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="005_hardening_status.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                     </a>
 
@@ -349,11 +362,11 @@ or external harnesses.</p>
 
         <script src="elasticlunr-ef4e11c1.min.js"></script>
         <script src="mark-09e88c2c.min.js"></script>
-        <script src="searcher-c2a407aa.js"></script>
+        <script src="searcher-09f2665d.js"></script>
 
         <script src="clipboard-1626706a.min.js"></script>
         <script src="highlight-abc7f01d.js"></script>
-        <script src="book-a0b12cfe.js"></script>
+        <script src="book-c22b7243.js"></script>
 
         <!-- Custom JS scripts -->
 

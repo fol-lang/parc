@@ -15,8 +15,8 @@
         <link rel="icon" href="favicon-de23e50b.svg">
         <link rel="shortcut icon" href="favicon-8114d1fc.png">
         <link rel="stylesheet" href="css/variables-8adf115d.css">
-        <link rel="stylesheet" href="css/general-2459343d.css">
-        <link rel="stylesheet" href="css/chrome-ae938929.css">
+        <link rel="stylesheet" href="css/general-0392ca55.css">
+        <link rel="stylesheet" href="css/chrome-fc474251.css">
         <link rel="stylesheet" href="css/print-9e4910d8.css" media="print">
 
         <!-- Fonts -->
@@ -35,10 +35,10 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-b1c210d5.js";
+            window.path_to_searchindex_js = "searchindex-05c88c01.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-6cd1cca1.js"></script>
+        <script src="toc-aee9c670.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -175,122 +175,34 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="project-layout"><a class="header" href="#project-layout">Project Layout</a></h1>
-<p>This chapter is for contributors and advanced users who want to understand where the parser logic
-lives.</p>
-<h2 id="top-level-crate-layout"><a class="header" href="#top-level-crate-layout">Top-level crate layout</a></h2>
-<p>The repository is organized around a small public API surface and several internal support modules.</p>
 <div class="table-wrapper">
 <table>
 <thead>
 <tr><th>Path</th><th>Purpose</th></tr>
 </thead>
 <tbody>
-<tr><td><code>src/lib.rs</code></td><td>Public module exports</td></tr>
-<tr><td><code>src/ir/</code></td><td>Source-level IR (<code>SourcePackage</code>, <code>SourceType</code>, etc.)</td></tr>
-<tr><td><code>src/extract/</code></td><td>Declaration extraction from AST to IR</td></tr>
-<tr><td><code>src/scan/</code></td><td>Header scanning (preprocess + parse + extract)</td></tr>
-<tr><td><code>src/intake/</code></td><td>Preprocessed source intake</td></tr>
-<tr><td><code>src/driver.rs</code></td><td>File-based parsing via external preprocessing</td></tr>
-<tr><td><code>src/preprocess/</code></td><td>Built-in C preprocessor</td></tr>
-<tr><td><code>src/parse.rs</code></td><td>Direct fragment parsing API</td></tr>
-<tr><td><code>src/ast/</code></td><td>AST type definitions</td></tr>
-<tr><td><code>src/visit/</code></td><td>Recursive visitor functions and trait</td></tr>
-<tr><td><code>src/parser/</code></td><td>Parser implementation split by grammar area</td></tr>
-<tr><td><code>src/loc.rs</code></td><td>Preprocessor line-marker location mapping</td></tr>
-<tr><td><code>src/span.rs</code></td><td><code>Span</code> and <code>Node&lt;T&gt;</code> wrappers</td></tr>
-<tr><td><code>src/print.rs</code></td><td>AST debug printer</td></tr>
-<tr><td><code>src/tests/</code></td><td>Test harnesses and integration-style tests</td></tr>
+<tr><td><code>src/contract/</code></td><td>Immutable checked source contract and canonical codec</td></tr>
+<tr><td><code>src/scan/</code></td><td>Explicit-target scan configuration and orchestration</td></tr>
+<tr><td><code>src/extract/</code></td><td>Crate-private deterministic AST-to-contract lowering</td></tr>
+<tr><td><code>src/driver.rs</code></td><td>File parsing through external preprocessing</td></tr>
+<tr><td><code>src/preprocess/</code></td><td>Built-in preprocessing and include resolution</td></tr>
+<tr><td><code>src/parse.rs</code></td><td>Direct and resilient fragment/translation-unit parsing</td></tr>
+<tr><td><code>src/ast/</code></td><td>Parser AST definitions</td></tr>
+<tr><td><code>src/visit/</code></td><td>AST traversal</td></tr>
+<tr><td><code>src/parser/</code></td><td>Grammar implementation</td></tr>
+<tr><td><code>src/span.rs</code>, <code>src/loc.rs</code></td><td>Byte spans and line-marker locations</td></tr>
+<tr><td><code>src/tests/</code></td><td>API, scan-contract, reftest, and system coverage</td></tr>
 </tbody>
 </table>
 </div>
-<h2 id="ast-and-visitor-organization"><a class="header" href="#ast-and-visitor-organization">AST and visitor organization</a></h2>
-<p>The AST is split into focused files:</p>
-<ul>
-<li><code>src/ast/declarations.rs</code></li>
-<li><code>src/ast/expressions.rs</code></li>
-<li><code>src/ast/statements.rs</code></li>
-<li><code>src/ast/extensions.rs</code></li>
-<li><code>src/ast/lexical.rs</code></li>
-</ul>
-<p>The visitor layer mirrors that structure in <code>src/visit/</code>.</p>
-<p>That symmetry is useful:</p>
-<ul>
-<li>if you add a new AST node, you usually need a matching visitor hook</li>
-<li>if you are looking for traversal behavior, the corresponding file is easy to find</li>
-</ul>
-<h2 id="parser-organization"><a class="header" href="#parser-organization">Parser organization</a></h2>
-<p>The parser implementation is divided by grammar topics instead of one giant file.
-Examples include:</p>
-<ul>
-<li><code>translation_units_and_functions.rs</code></li>
-<li><code>declarations_entry.rs</code></li>
-<li><code>declarators.rs</code></li>
-<li><code>statements_iteration_and_jump.rs</code></li>
-<li><code>casts_and_binary.rs</code></li>
-<li><code>typeof_and_ts18661.rs</code></li>
-</ul>
-<p>That split makes grammar work more localized.</p>
-<h2 id="internal-environment-handling"><a class="header" href="#internal-environment-handling">Internal environment handling</a></h2>
-<p>Parsing depends on <code>Env</code>, which tracks parser state such as known typedef names and enabled syntax
-flavor. The public <code>parse</code> and <code>driver</code> APIs construct the right environment for you.</p>
-<p>This matters because some C parses depend on whether an identifier is currently known as a typedef.</p>
-<h2 id="testing-layout"><a class="header" href="#testing-layout">Testing layout</a></h2>
-<p><code>src/tests/</code> contains:</p>
-<ul>
-<li>API tests</li>
-<li>reftest harnesses</li>
-<li>larger fixture harnesses</li>
-<li>external/system-header related coverage</li>
-</ul>
-<p>When changing parser behavior, expect to touch both narrow tests and corpus-style fixtures.</p>
-<h2 id="contributor-workflow"><a class="header" href="#contributor-workflow">Contributor workflow</a></h2>
-<p>A good change sequence is:</p>
-<ol>
-<li>reproduce with the smallest possible <code>parse::*</code> input</li>
-<li>add or update a focused test</li>
-<li>inspect the tree with <code>Printer</code></li>
-<li>patch the grammar or AST logic</li>
-<li>run <code>make test</code></li>
-</ol>
-<h2 id="why-the-parser-is-split-this-way"><a class="header" href="#why-the-parser-is-split-this-way">Why the parser is split this way</a></h2>
-<p>The parser is organized by syntax areas because C grammar work tends to be local but not trivial.
-That split helps with three things:</p>
-<ul>
-<li>keeping grammar changes reviewable</li>
-<li>matching failures to the right part of the parser quickly</li>
-<li>reducing the chance that one large parser file becomes impossible to maintain</li>
-</ul>
-<p>For example:</p>
-<ul>
-<li>declaration bugs often land in <code>declarations_entry.rs</code>, <code>declarators.rs</code>, or related files</li>
-<li>expression bugs often land in <code>primary_and_generic.rs</code>, <code>casts_and_binary.rs</code>, or nearby files</li>
-<li>statement bugs often land in the <code>statements_*</code> files</li>
-</ul>
-<h2 id="public-versus-internal-boundaries"><a class="header" href="#public-versus-internal-boundaries">Public versus internal boundaries</a></h2>
-<p>These are normal consumer-facing modules:</p>
-<ul>
-<li><code>ir</code> (primary data contract)</li>
-<li><code>extract</code></li>
-<li><code>scan</code></li>
-<li><code>intake</code></li>
-<li><code>driver</code></li>
-<li><code>preprocess</code></li>
-<li><code>parse</code></li>
-<li><code>ast</code></li>
-<li><code>visit</code></li>
-<li><code>loc</code></li>
-<li><code>span</code></li>
-<li><code>print</code></li>
-</ul>
-<p>These are implementation-oriented and should not be treated as a stable downstream boundary:</p>
-<ul>
-<li><code>parser</code></li>
-<li><code>env</code></li>
-<li><code>astutil</code></li>
-<li><code>strings</code></li>
-</ul>
-<p>That distinction matters when you are extending the book or the crate API. Documentation should
-prefer the consumer-facing modules unless the chapter is specifically contributor-oriented.</p>
+<p>The old <code>src/ir/</code> and <code>src/intake/</code> trees are gone. Do not add alternate
+package-construction routes around <code>scan</code> and <code>contract</code>.</p>
+<p>The parser tracks typedef state in an internal <code>Env</code>; resilient recovery resets
+that state from the last successfully parsed prefix before continuing. Include
+resolution contains no unsafe callback escape hatch; the crate forbids unsafe
+code.</p>
+<p>Use Make targets for formatting, checks, tests, packaging, system lanes, and
+documentation.</p>
 
                     </main>
 
@@ -336,11 +248,11 @@ prefer the consumer-facing modules unless the chapter is specifically contributo
 
         <script src="elasticlunr-ef4e11c1.min.js"></script>
         <script src="mark-09e88c2c.min.js"></script>
-        <script src="searcher-c2a407aa.js"></script>
+        <script src="searcher-09f2665d.js"></script>
 
         <script src="clipboard-1626706a.min.js"></script>
         <script src="highlight-abc7f01d.js"></script>
-        <script src="book-a0b12cfe.js"></script>
+        <script src="book-c22b7243.js"></script>
 
         <!-- Custom JS scripts -->
 

@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Migration From bic - PARC Reference</title>
+        <title>Hardening Status - PARC Reference</title>
 
 
         <!-- Custom HTML head -->
@@ -15,8 +15,8 @@
         <link rel="icon" href="favicon-de23e50b.svg">
         <link rel="shortcut icon" href="favicon-8114d1fc.png">
         <link rel="stylesheet" href="css/variables-8adf115d.css">
-        <link rel="stylesheet" href="css/general-2459343d.css">
-        <link rel="stylesheet" href="css/chrome-ae938929.css">
+        <link rel="stylesheet" href="css/general-0392ca55.css">
+        <link rel="stylesheet" href="css/chrome-fc474251.css">
         <link rel="stylesheet" href="css/print-9e4910d8.css" media="print">
 
         <!-- Fonts -->
@@ -35,10 +35,10 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-b1c210d5.js";
+            window.path_to_searchindex_js = "searchindex-05c88c01.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-6cd1cca1.js"></script>
+        <script src="toc-aee9c670.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -174,158 +174,83 @@
 
                 <div id="mdbook-content" class="content">
                     <main>
-                        <h1 id="migration-from-bic"><a class="header" href="#migration-from-bic">Migration From bic</a></h1>
-<p>This chapter documents how to migrate downstream consumers from <code>bic</code>’s frontend extraction
-to <code>parc</code>’s <code>SourcePackage</code> contract.</p>
-<h2 id="why-migrate"><a class="header" href="#why-migrate">Why migrate</a></h2>
-<p><code>parc</code> now owns source-level declaration extraction. <code>bic</code>’s <code>extract.rs</code> was the legacy location
-for this logic. The canonical path is now:</p>
-<pre><code class="language-text">C headers  -&gt;  parc::scan / parc::extract  -&gt;  SourcePackage  -&gt;  downstream
-</code></pre>
-<p><code>bic</code> should consume <code>parc::ir::SourcePackage</code> instead of owning its own extraction.</p>
-<h2 id="type-mapping"><a class="header" href="#type-mapping">Type mapping</a></h2>
+                        <h1 id="hardening-status"><a class="header" href="#hardening-status">Hardening Status</a></h1>
+<p>PARC exposes the checked schema-v2 source-package contract and the bounded H2
+header-to-contract producer. This is source-frontend evidence, not arbitrary
+host-header or whole-toolchain certification.</p>
+<h2 id="identity-and-schema"><a class="header" href="#identity-and-schema">Identity and schema</a></h2>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>bic type</th><th>parc type</th><th>Notes</th></tr>
+<tr><th>Item</th><th>Current value</th></tr>
 </thead>
 <tbody>
-<tr><td><code>BindingPackage</code></td><td><code>SourcePackage</code></td><td>parc has no <code>layouts</code>, <code>link</code>, or <code>bic_version</code></td></tr>
-<tr><td><code>BindingItem</code></td><td><code>SourceItem</code></td><td>Same variant set</td></tr>
-<tr><td><code>BindingType</code></td><td><code>SourceType</code></td><td>Pointer model differs (see below)</td></tr>
-<tr><td><code>FunctionBinding</code></td><td><code>SourceFunction</code></td><td>Identical structure</td></tr>
-<tr><td><code>ParameterBinding</code></td><td><code>SourceParameter</code></td><td>Identical structure</td></tr>
-<tr><td><code>RecordBinding</code></td><td><code>SourceRecord</code></td><td>No <code>representation</code> or <code>abi_confidence</code></td></tr>
-<tr><td><code>FieldBinding</code></td><td><code>SourceField</code></td><td>No <code>layout</code> field</td></tr>
-<tr><td><code>EnumBinding</code></td><td><code>SourceEnum</code></td><td>Identical structure</td></tr>
-<tr><td><code>TypeAliasBinding</code></td><td><code>SourceTypeAlias</code></td><td>No <code>canonical_resolution</code></td></tr>
-<tr><td><code>VariableBinding</code></td><td><code>SourceVariable</code></td><td>Identical structure</td></tr>
-<tr><td><code>UnsupportedItem</code></td><td><code>SourceUnsupported</code></td><td>Identical structure</td></tr>
-<tr><td><code>CallingConvention</code></td><td><code>CallingConvention</code></td><td>parc version includes <code>Unknown(String)</code></td></tr>
-<tr><td><code>TypeQualifiers</code></td><td><code>TypeQualifiers</code></td><td>Identical structure</td></tr>
-<tr><td><code>BindingTarget</code></td><td><code>SourceTarget</code></td><td>Identical structure</td></tr>
-<tr><td><code>BindingInputs</code></td><td><code>SourceInputs</code></td><td>Identical structure</td></tr>
-<tr><td><code>BindingDefine</code></td><td><code>SourceDefine</code></td><td>Identical structure</td></tr>
-<tr><td><code>MacroBinding</code></td><td><code>SourceMacro</code></td><td>parc drops <code>function_like</code> and <code>category</code></td></tr>
-<tr><td><code>DeclarationProvenance</code></td><td><code>DeclarationProvenance</code></td><td>Identical structure</td></tr>
-<tr><td><code>MacroProvenance</code></td><td><code>MacroProvenance</code></td><td>Identical structure</td></tr>
+<tr><td>Distribution package</td><td><code>follang-parc</code> 0.16.0 (<code>publish = false</code>)</td></tr>
+<tr><td>Rust library/import name</td><td><code>parc</code></td></tr>
+<tr><td>Declared MSRV</td><td>Rust 1.89</td></tr>
+<tr><td>Source artifact schema</td><td><code>follang.parc.source-package</code>, version 2</td></tr>
+<tr><td>ID algorithm</td><td>version 1</td></tr>
+<tr><td>Public producer</td><td><code>parc::scan::scan_headers</code></td></tr>
+<tr><td>Certified implementation baseline</td><td><code>9585c5977e73795f71d7844bb179f1a2ba613c83</code> (H2)</td></tr>
+<tr><td>Sibling dependencies</td><td>none; PARC is released first</td></tr>
 </tbody>
 </table>
 </div>
-<h2 id="pointer-model-difference"><a class="header" href="#pointer-model-difference">Pointer model difference</a></h2>
-<p>bic:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>Pointer {
-    pointee: Box&lt;BindingType&gt;,
-    const_pointee: bool,      // whether pointee is const
-    qualifiers: TypeQualifiers, // qualifiers on the pointer itself
-}
-<span class="boring">}</span></code></pre>
-<p>parc:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>Pointer {
-    pointee: Box&lt;SourceType&gt;,
-    qualifiers: TypeQualifiers, // is_const means pointee is const
-}
-<span class="boring">}</span></code></pre>
-<p>In parc, <code>qualifiers.is_const</code> on a <code>Pointer</code> indicates that the pointee is const-qualified.
-Use <code>SourceType::const_ptr(inner)</code> and <code>SourceType::ptr(inner)</code> as constructors.</p>
-<h2 id="missing-fields-in-parc"><a class="header" href="#missing-fields-in-parc">Missing fields in parc</a></h2>
-<p>These bic fields are intentionally absent from parc because they belong to the link/ABI layer:</p>
-<ul>
-<li><code>FieldBinding.layout</code> (field offset) — use LINC probing</li>
-<li><code>RecordBinding.representation</code> — use LINC probing</li>
-<li><code>RecordBinding.abi_confidence</code> — use LINC validation</li>
-<li><code>TypeAliasBinding.canonical_resolution</code> — parc preserves <code>TypedefRef</code> chains</li>
-<li><code>BindingPackage.layouts</code> — use LINC probing</li>
-<li><code>BindingPackage.link</code> — use LINC link surface</li>
-<li><code>BindingPackage.effective_macro_environment</code> — use LINC macro analysis</li>
-</ul>
-<h2 id="migration-steps"><a class="header" href="#migration-steps">Migration steps</a></h2>
-<h3 id="step-1-replace-extraction-call"><a class="header" href="#step-1-replace-extraction-call">Step 1: Replace extraction call</a></h3>
-<p>Before:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use bic::extract::Extractor;
-use bic::ir::BindingPackage;
-
-let extractor = Extractor::new();
-let (items, diagnostics) = extractor.extract(&amp;unit);
-let mut pkg = BindingPackage::new();
-pkg.items = items;
-<span class="boring">}</span></code></pre>
-<p>After:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use parc::extract;
-use parc::ir::SourcePackage;
-
-let pkg = extract::extract_from_translation_unit(&amp;unit, Some("header.h".into()));
-<span class="boring">}</span></code></pre>
-<p>Or for end-to-end scanning:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use parc::scan::{ScanConfig, scan_headers};
-
-let config = ScanConfig::new()
-    .entry_header("header.h")
-    .with_builtin_preprocessor();
-let result = scan_headers(&amp;config).unwrap();
-let pkg: &amp;SourcePackage = &amp;result.package;
-<span class="boring">}</span></code></pre>
-<h3 id="step-2-update-type-references"><a class="header" href="#step-2-update-type-references">Step 2: Update type references</a></h3>
-<p>Replace all uses of <code>BindingType</code> with <code>SourceType</code>, <code>BindingItem</code> with <code>SourceItem</code>, etc.
-The variant names are identical.</p>
-<h3 id="step-3-handle-pointer-model"><a class="header" href="#step-3-handle-pointer-model">Step 3: Handle pointer model</a></h3>
-<p>Replace <code>const_pointee</code> checks:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>// Before (bic)
-if let BindingType::Pointer { const_pointee: true, .. } = ty { ... }
-
-// After (parc)
-if let SourceType::Pointer { qualifiers, .. } = ty {
-    if qualifiers.is_const { ... }
-}
-<span class="boring">}</span></code></pre>
-<h3 id="step-4-remove-abi-fields"><a class="header" href="#step-4-remove-abi-fields">Step 4: Remove ABI fields</a></h3>
-<p>Any code that reads <code>FieldBinding.layout</code>, <code>RecordBinding.representation</code>, or
-<code>RecordBinding.abi_confidence</code> should be moved to LINC’s domain.</p>
-<h3 id="step-5-use-builder-for-programmatic-construction"><a class="header" href="#step-5-use-builder-for-programmatic-construction">Step 5: Use builder for programmatic construction</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use parc::ir::{SourcePackageBuilder, SourceItem, SourceFunction, ...};
-
-let pkg = SourcePackageBuilder::new()
-    .source_path("api.h")
-    .item(SourceItem::Function(func))
-    .item(SourceItem::Record(rec))
-    .build();
-<span class="boring">}</span></code></pre>
-<h2 id="api-reference"><a class="header" href="#api-reference">API reference</a></h2>
-<p>Key public APIs for downstream consumers:</p>
-<ul>
-<li><code>parc::extract::extract_from_source(src)</code> — parse and extract</li>
-<li><code>parc::extract::extract_from_translation_unit(unit, path)</code> — extract from AST</li>
-<li><code>parc::extract::parse_and_extract(src, flavor)</code> — with flavor control</li>
-<li><code>parc::extract::parse_and_extract_resilient(src, flavor)</code> — with error recovery</li>
-<li><code>parc::scan::scan_headers(config)</code> — end-to-end header scanning</li>
-<li><code>parc::ir::SourcePackage</code> — the contract type</li>
-<li><code>parc::ir::SourcePackageBuilder</code> — programmatic construction</li>
-<li><code>SourcePackage::retain_items(pred)</code> — filter items</li>
-<li><code>SourcePackage::merge(other)</code> — combine packages</li>
-</ul>
+<h2 id="evidence-boundary"><a class="header" href="#evidence-boundary">Evidence boundary</a></h2>
+<p>The checked contract preserves explicit target identity, effective inputs,
+logical files, declarations, macros, diagnostics, completeness, provenance,
+and canonical IDs. Its decoder rejects unknown schema versions and forged
+cross-references. <code>retain</code> closes over declaration references; <code>merge</code> rejects
+target, input, file, declaration, and macro conflicts before rebuilding a
+checked fingerprint.</p>
+<p>The built-in scan path traces original ranges, transitive include content,
+include chains, effective macro definitions, and macro expansions. It may be
+<code>Complete</code> only when no forcing gap remains. Unsupported directives or macro
+operators, malformed conditionals, recovery, type uncertainty, and resource
+ceilings are structured <code>Partial</code> or <code>Rejected</code> outcomes. External preprocessing
+still carries <code>PARC-P0001</code> because generated compiler output cannot prove
+original provenance. Layout, binary symbols, link facts, and Rust-generation
+facts remain downstream responsibilities.</p>
+<p>The old public <code>ir</code>, <code>intake</code>, and direct extractor routes do not exist. Parser
+and AST APIs remain available for syntax-oriented consumers, but they do not
+construct a source contract.</p>
+<h2 id="verification-interface"><a class="header" href="#verification-interface">Verification interface</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Command</th><th>Purpose</th></tr>
+</thead>
+<tbody>
+<tr><td><code>make fmt-check</code></td><td>Formatting gate</td></tr>
+<tr><td><code>make lint</code></td><td>Clippy with warnings denied</td></tr>
+<tr><td><code>make check-features</code></td><td>Default, all-feature, and no-default checks</td></tr>
+<tr><td><code>make test</code></td><td>Repository tests and doctests</td></tr>
+<tr><td><code>make test-contract</code></td><td>Frozen contract corpus and scan preservation</td></tr>
+<tr><td><code>make test-contract-system</code></td><td>Required GCC enum and GCC/Clang differential evidence</td></tr>
+<tr><td><code>make test-package</code></td><td>Candidate package archive and clean-consumer check</td></tr>
+<tr><td><code>make test-system</code></td><td>Compiler/header-dependent test group</td></tr>
+<tr><td><code>make docs-check</code></td><td>mdBook and Rust API documentation</td></tr>
+<tr><td><code>make verify</code></td><td>Full clean-worktree gate</td></tr>
+</tbody>
+</table>
+</div>
+<p>System lanes support optional and required prerequisite modes. Release evidence
+must use required mode; a skip is not a pass.</p>
+<p>Registry publication is disabled and no crates.io availability claim is made.
+See the release-policy chapter for SemVer, schema/ID, MSRV, archive, exact
+revision, and clean-upstream rules.</p>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="205_readiness_scorecard.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="parc.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                             </a>
 
+                            <a rel="next prefetch" href="010_getting_started.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
+                            </a>
 
                         <div style="clear: both"></div>
                     </nav>
@@ -333,10 +258,13 @@ let pkg = SourcePackageBuilder::new()
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="205_readiness_scorecard.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="parc.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                     </a>
 
+                    <a rel="next prefetch" href="010_getting_started.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
+                    </a>
             </nav>
 
         </div>
@@ -356,11 +284,11 @@ let pkg = SourcePackageBuilder::new()
 
         <script src="elasticlunr-ef4e11c1.min.js"></script>
         <script src="mark-09e88c2c.min.js"></script>
-        <script src="searcher-c2a407aa.js"></script>
+        <script src="searcher-09f2665d.js"></script>
 
         <script src="clipboard-1626706a.min.js"></script>
         <script src="highlight-abc7f01d.js"></script>
-        <script src="book-a0b12cfe.js"></script>
+        <script src="book-c22b7243.js"></script>
 
         <!-- Custom JS scripts -->
 

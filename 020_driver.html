@@ -15,8 +15,8 @@
         <link rel="icon" href="favicon-de23e50b.svg">
         <link rel="shortcut icon" href="favicon-8114d1fc.png">
         <link rel="stylesheet" href="css/variables-8adf115d.css">
-        <link rel="stylesheet" href="css/general-2459343d.css">
-        <link rel="stylesheet" href="css/chrome-ae938929.css">
+        <link rel="stylesheet" href="css/general-0392ca55.css">
+        <link rel="stylesheet" href="css/chrome-fc474251.css">
         <link rel="stylesheet" href="css/print-9e4910d8.css" media="print">
 
         <!-- Fonts -->
@@ -35,10 +35,10 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-b1c210d5.js";
+            window.path_to_searchindex_js = "searchindex-05c88c01.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-6cd1cca1.js"></script>
+        <script src="toc-aee9c670.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -303,8 +303,8 @@ match parse_preprocessed(&amp;Config::default(), broken) {
 <p>If the preprocessed source contains line markers, <code>SyntaxError::get_location()</code> can reconstruct the
 original file and include stack.</p>
 <h2 id="built-in-preprocessor"><a class="header" href="#built-in-preprocessor">Built-in preprocessor</a></h2>
-<p>PARC includes a built-in C preprocessor that eliminates the need for an external
-<code>gcc</code> or <code>clang</code> binary. Use <code>parse_builtin</code> instead of <code>parse</code>:</p>
+<p>PARC includes a scoped built-in preprocessor for controlled syntax workflows.
+Use <code>parse_builtin</code> instead of <code>parse</code> when its maintained surface is sufficient:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>use parc::driver::{parse_builtin, Config};
@@ -315,14 +315,14 @@ let include_paths = vec![Path::new("/usr/include")];
 let parsed = parse_builtin(&amp;config, "src/input.c", &amp;include_paths)?;
 <span class="boring">Ok::&lt;(), parc::driver::Error&gt;(())
 </span><span class="boring">}</span></code></pre>
-<p>The built-in preprocessor supports:</p>
+<p>The built-in preprocessor implements common:</p>
 <ul>
 <li>Object-like and function-like macros (with <code>#</code>, <code>##</code>, <code>__VA_ARGS__</code>)</li>
 <li>Conditional compilation (<code>#if</code>, <code>#ifdef</code>, <code>#ifndef</code>, <code>#elif</code>, <code>#else</code>, <code>#endif</code>)</li>
 <li><code>#include</code> resolution with configurable search paths</li>
 <li>Include guard detection and optimization</li>
 <li><code>defined()</code> operator in <code>#if</code> expressions</li>
-<li>Full C constant expression evaluation (arithmetic, bitwise, logical, ternary)</li>
+<li>Conditional-expression evaluation (arithmetic, bitwise, logical, ternary)</li>
 <li>Predefined target macros (architecture, OS, GCC compatibility)</li>
 </ul>
 <h2 id="macro-extraction"><a class="header" href="#macro-extraction">Macro extraction</a></h2>
@@ -338,14 +338,18 @@ for (name, value) in &amp;macros {
 }
 <span class="boring">Ok::&lt;(), parc::driver::Error&gt;(())
 </span><span class="boring">}</span></code></pre>
-<p>This returns all macros active after preprocessing, including predefined target
-macros and macros from included headers.</p>
+<p>This driver utility returns active preprocessing macros, including predefined
+target macros and macros from included headers. It is not the checked schema-v2
+macro inventory. The traced built-in <code>scan_headers</code> path records effective
+macros with original definition and expansion provenance; external scans do not
+claim that evidence and carry <code>PARC-P0001</code>.</p>
 <h2 id="practical-advice"><a class="header" href="#practical-advice">Practical advice</a></h2>
 <ul>
 <li>Keep <code>parsed.source</code> if you plan to report errors later.</li>
 <li>Use <code>parse_preprocessed</code> for deterministic regression tests.</li>
 <li>Prefer explicit <code>cpp_options</code> in tools and CI so parse behavior stays reproducible.</li>
-<li>Use <code>parse_builtin</code> when you need zero-dependency parsing without a C toolchain.</li>
+<li>Use <code>parse_builtin</code> only for controlled syntax inputs. For a source contract,
+use <code>scan_headers</code> with an explicit <code>TargetSpec</code> and preprocessor mode.</li>
 </ul>
 
                     </main>
@@ -392,11 +396,11 @@ macros and macros from included headers.</p>
 
         <script src="elasticlunr-ef4e11c1.min.js"></script>
         <script src="mark-09e88c2c.min.js"></script>
-        <script src="searcher-c2a407aa.js"></script>
+        <script src="searcher-09f2665d.js"></script>
 
         <script src="clipboard-1626706a.min.js"></script>
         <script src="highlight-abc7f01d.js"></script>
-        <script src="book-a0b12cfe.js"></script>
+        <script src="book-c22b7243.js"></script>
 
         <!-- Custom JS scripts -->
 

@@ -15,8 +15,8 @@
         <link rel="icon" href="favicon-de23e50b.svg">
         <link rel="shortcut icon" href="favicon-8114d1fc.png">
         <link rel="stylesheet" href="css/variables-8adf115d.css">
-        <link rel="stylesheet" href="css/general-2459343d.css">
-        <link rel="stylesheet" href="css/chrome-ae938929.css">
+        <link rel="stylesheet" href="css/general-0392ca55.css">
+        <link rel="stylesheet" href="css/chrome-fc474251.css">
         <link rel="stylesheet" href="css/print-9e4910d8.css" media="print">
 
         <!-- Fonts -->
@@ -35,10 +35,10 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-b1c210d5.js";
+            window.path_to_searchindex_js = "searchindex-05c88c01.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-6cd1cca1.js"></script>
+        <script src="toc-aee9c670.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -175,113 +175,69 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="built-in-preprocessor"><a class="header" href="#built-in-preprocessor">Built-in Preprocessor</a></h1>
-<p>PARC includes a complete built-in C preprocessor in the <code>parc::preprocess</code> module.
-This eliminates the runtime dependency on <code>gcc</code> or <code>clang</code> for preprocessing.</p>
-<h2 id="architecture"><a class="header" href="#architecture">Architecture</a></h2>
-<p>The preprocessor is split into focused modules:</p>
+<p><code>parc::preprocess</code> provides a scoped built-in preprocessing implementation. It
+is useful for controlled inputs and repository fixtures; it is not claimed to
+be a complete replacement for GCC or Clang on arbitrary system headers.</p>
+<p>The contract-producing scan API selects preprocessing explicitly with
+<code>PreprocessorMode::Builtin</code> or <code>PreprocessorMode::External</code>. Built-in scan
+macros come from the caller’s checked <code>TargetSpec</code>; the scan path never derives
+a host target. <code>ScanLimits</code> bounds file and total input, include depth/count,
+macro definitions/expansions, nested macro-expansion depth, tokens, generated
+bytes, external output, and external runtime.</p>
+<h2 id="components"><a class="header" href="#components">Components</a></h2>
 <div class="table-wrapper">
 <table>
 <thead>
 <tr><th>Module</th><th>Purpose</th></tr>
 </thead>
 <tbody>
-<tr><td><code>token</code></td><td>Token types (<code>Ident</code>, <code>Number</code>, <code>Punct</code>, etc.)</td></tr>
-<tr><td><code>lexer</code></td><td>Preprocessor tokenizer (§6.4 preprocessing tokens)</td></tr>
-<tr><td><code>directive</code></td><td>Directive parser (<code>#define</code>, <code>#if</code>, <code>#include</code>, etc.)</td></tr>
-<tr><td><code>macros</code></td><td>Macro table, object-like and function-like expansion</td></tr>
-<tr><td><code>expr</code></td><td><code>#if</code> constant expression evaluator</td></tr>
-<tr><td><code>processor</code></td><td>Conditional compilation engine</td></tr>
-<tr><td><code>include</code></td><td><code>#include</code> resolution with search paths and guard tracking</td></tr>
-<tr><td><code>predefined</code></td><td>Target-specific predefined macros</td></tr>
+<tr><td><code>token</code>, <code>lexer</code></td><td>Preprocessing tokens and tokenization</td></tr>
+<tr><td><code>directive</code></td><td>Directive parsing</td></tr>
+<tr><td><code>macros</code></td><td>Object-like and function-like macro state and expansion</td></tr>
+<tr><td><code>expr</code></td><td>Conditional-expression evaluation</td></tr>
+<tr><td><code>processor</code></td><td>Conditional compilation and expansion orchestration</td></tr>
+<tr><td><code>include</code></td><td>Include lookup, caching, and guard tracking</td></tr>
+<tr><td><code>predefined</code></td><td>Low-level target-macro primitives used by syntax APIs</td></tr>
 </tbody>
 </table>
 </div>
-<h2 id="quick-start"><a class="header" href="#quick-start">Quick start</a></h2>
+<h2 id="controlled-source-helper"><a class="header" href="#controlled-source-helper">Controlled-source helper</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>use parc::preprocess::preprocess;
 
 let output = preprocess("#define X 42\nint a = X;\n");
-// output.tokens contains the expanded token stream
+assert!(output.errors.is_empty());
 <span class="boring">}</span></code></pre>
-<h2 id="macro-expansion"><a class="header" href="#macro-expansion">Macro expansion</a></h2>
-<p>Both object-like and function-like macros are supported:</p>
-<pre><code class="language-c">#define SIZE 1024
-#define MAX(a, b) ((a) &gt; (b) ? (a) : (b))
-#define LOG(fmt, ...) printf(fmt, __VA_ARGS__)
-</code></pre>
-<p>Features:</p>
-<ul>
-<li><code>#</code> stringification operator</li>
-<li><code>##</code> token pasting operator</li>
-<li><code>__VA_ARGS__</code> for variadic macros</li>
-<li>Recursive expansion with “paint set” to prevent infinite recursion (C standard §6.10.3.4)</li>
-<li>Self-referential macros handled correctly (<code>#define X X + 1</code> expands to <code>X + 1</code>)</li>
-</ul>
-<h2 id="conditional-compilation"><a class="header" href="#conditional-compilation">Conditional compilation</a></h2>
-<p>All standard conditional directives are supported:</p>
-<pre><code class="language-c">#if CONDITION
-#ifdef NAME
-#ifndef NAME
-#elif CONDITION
-#else
-#endif
-</code></pre>
-<p>The <code>#if</code> expression evaluator supports:</p>
-<ul>
-<li>Integer literals (decimal, octal, hex, binary)</li>
-<li>Character constants (<code>'x'</code>)</li>
-<li><code>defined(NAME)</code> and <code>defined NAME</code></li>
-<li>All C operators: arithmetic, bitwise, logical, comparison, ternary</li>
-<li>Undefined identifiers evaluate to <code>0</code> (per C standard §6.10.1p4)</li>
-</ul>
+<p>This helper preprocesses text; it does not construct a <code>SourcePackage</code>, record
+effective target inputs, or prove original macro provenance.</p>
+<h2 id="implemented-surface"><a class="header" href="#implemented-surface">Implemented surface</a></h2>
+<p>The low-level text helper covers common object-like and function-like macros,
+variadics, stringification, token pasting, standard conditional directives,
+include lookup, and include guards. The contract-producing tracer deliberately
+has a narrower certified surface: object-like and function-like expansion,
+checked signed conditional arithmetic, explicit include lookup, header guards,
+and <code>#pragma once</code>. It rejects unproved <code>#</code>/<code>##</code>, unsupported directives and
+pragmas, malformed macro arity, representation-dependent conditional
+expressions, and unsafe include paths with exact diagnostics.</p>
+<p>Those capabilities are implementation coverage, not a universal compatibility
+claim. Compiler-specific predefined macros, unusual token-pasting behavior,
+extension-heavy include stacks, and host SDK headers may still require an
+external preprocessor or produce an explicit partial/error outcome.</p>
 <h2 id="include-resolution"><a class="header" href="#include-resolution">Include resolution</a></h2>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use parc::preprocess::{IncludeResolver, Processor};
-
-let mut resolver = IncludeResolver::new();
-resolver.add_system_path("/usr/include");
-resolver.add_local_path("./include");
-
-let mut processor = Processor::new();
-let result = resolver.preprocess_file(
-    std::path::Path::new("src/main.c"),
-    &amp;mut processor,
-);
-<span class="boring">}</span></code></pre>
-<p>Features:</p>
-<ul>
-<li><code>"local"</code> includes search relative to the including file, then local paths</li>
-<li><code>&lt;system&gt;</code> includes search system paths only</li>
-<li>Include guard detection (<code>#ifndef X / #define X / ... / #endif</code>)</li>
-<li>File content caching</li>
-<li>Maximum include depth (200) to prevent infinite recursion</li>
-</ul>
-<h2 id="predefined-macros"><a class="header" href="#predefined-macros">Predefined macros</a></h2>
-<p>Target-specific macros are available for common platforms:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use parc::preprocess::{MacroTable, Target, define_target_macros};
-
-let mut table = MacroTable::new();
-define_target_macros(&amp;mut table, &amp;Target::host());
-// Now table has __STDC__, __linux__, __x86_64__, __GNUC__, etc.
-<span class="boring">}</span></code></pre>
-<p>Supported targets:</p>
-<ul>
-<li><strong>Architectures</strong>: x86_64, aarch64, x86, arm</li>
-<li><strong>Operating systems</strong>: Linux, macOS (Darwin), Windows</li>
-</ul>
-<p>Standard macros defined:</p>
-<ul>
-<li><code>__STDC__</code>, <code>__STDC_VERSION__</code>, <code>__STDC_HOSTED__</code></li>
-<li>Architecture-specific: <code>__x86_64__</code>, <code>__aarch64__</code>, <code>__i386__</code>, <code>__arm__</code></li>
-<li>OS-specific: <code>__linux__</code>, <code>__APPLE__</code>, <code>_WIN32</code>, etc.</li>
-<li>GCC compatibility: <code>__GNUC__</code>, <code>__GNUC_MINOR__</code>, <code>__GNUC_PATCHLEVEL__</code></li>
-<li>Type sizes: <code>__SIZEOF_POINTER__</code>, <code>__SIZEOF_INT__</code>, etc.</li>
-<li>Limits: <code>__CHAR_BIT__</code>, <code>__INT_MAX__</code>, <code>__LONG_MAX__</code></li>
-</ul>
+<p><code>IncludeResolver</code> accepts explicit local and system search paths. The public
+scan configuration requires those paths to be absolute, existing, and
+covered by <code>PathMapping</code>; it records their logical identities in effective
+inputs. Canonicalized roots and resolved symlink targets may not escape the
+mapping policy. Include implementation contains no unsafe callback escape
+hatch.</p>
+<h2 id="contract-evidence-boundary"><a class="header" href="#contract-evidence-boundary">Contract evidence boundary</a></h2>
+<p>The traced built-in path attaches declarations and macros to original logical
+files and records transitive content identities, include chains, and macro
+definition/invocation ranges. A scan is <code>Complete</code> only inside that exact,
+bounded surface. The external path records its compiler identity, argv,
+sysroot, environment policy, and generated source, but remains <code>Partial</code> with
+<code>PARC-P0001</code>; external output does not prove original file or macro provenance.</p>
 
                     </main>
 
@@ -327,11 +283,11 @@ define_target_macros(&amp;mut table, &amp;Target::host());
 
         <script src="elasticlunr-ef4e11c1.min.js"></script>
         <script src="mark-09e88c2c.min.js"></script>
-        <script src="searcher-c2a407aa.js"></script>
+        <script src="searcher-09f2665d.js"></script>
 
         <script src="clipboard-1626706a.min.js"></script>
         <script src="highlight-abc7f01d.js"></script>
-        <script src="book-a0b12cfe.js"></script>
+        <script src="book-c22b7243.js"></script>
 
         <!-- Custom JS scripts -->
 

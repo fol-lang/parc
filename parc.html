@@ -15,8 +15,8 @@
         <link rel="icon" href="favicon-de23e50b.svg">
         <link rel="shortcut icon" href="favicon-8114d1fc.png">
         <link rel="stylesheet" href="css/variables-8adf115d.css">
-        <link rel="stylesheet" href="css/general-2459343d.css">
-        <link rel="stylesheet" href="css/chrome-ae938929.css">
+        <link rel="stylesheet" href="css/general-0392ca55.css">
+        <link rel="stylesheet" href="css/chrome-fc474251.css">
         <link rel="stylesheet" href="css/print-9e4910d8.css" media="print">
 
         <!-- Fonts -->
@@ -35,10 +35,10 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-b1c210d5.js";
+            window.path_to_searchindex_js = "searchindex-05c88c01.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-6cd1cca1.js"></script>
+        <script src="toc-aee9c670.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -175,90 +175,41 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="parc-reference"><a class="header" href="#parc-reference">PARC Reference</a></h1>
-<p>PARC is the source frontend of the toolchain. The real crate surface today is:</p>
-<ul>
-<li>preprocessing through both external-driver and built-in paths</li>
-<li>C parsing into a typed AST</li>
-<li>extraction into a durable source IR</li>
-<li>header scanning that goes straight to <code>SourcePackage</code></li>
-<li>AST-oriented support APIs such as visiting, spans, locations, and printing</li>
-</ul>
-<p>That means the crate serves two audiences at once:</p>
+<p>PARC is the source frontend of the toolchain. It has two public surfaces:</p>
 <ol>
-<li>downstream tools that want <code>parc::ir::SourcePackage</code></li>
-<li>parser-facing tools that want direct AST access</li>
+<li><code>scan</code> and <code>contract</code> for checked source artifacts;</li>
+<li><code>driver</code>, <code>parse</code>, <code>ast</code>, and <code>visit</code> for syntax-level tooling.</li>
 </ol>
-<h2 id="what-parc-owns"><a class="header" href="#what-parc-owns">What PARC Owns</a></h2>
-<ul>
-<li>preprocessing</li>
-<li>parsing</li>
-<li>parser recovery</li>
-<li>source extraction</li>
-<li>source diagnostics and provenance</li>
-<li>source IR</li>
-<li>header scanning</li>
-<li>AST traversal and debug support</li>
-</ul>
-<h2 id="what-parc-does-not-own"><a class="header" href="#what-parc-does-not-own">What PARC Does Not Own</a></h2>
-<ul>
-<li>symbol inventories</li>
-<li>binary validation</li>
-<li>link-plan construction</li>
-<li>Rust lowering or crate emission</li>
-</ul>
-<h2 id="actual-data-flow"><a class="header" href="#actual-data-flow">Actual Data Flow</a></h2>
-<pre><code class="language-text">raw source / headers
-  -&gt; driver or built-in preprocessor
-  -&gt; parser AST
-  -&gt; extraction
-  -&gt; SourcePackage
-  -&gt; serialized source artifact or downstream harness
+<h2 id="data-flow"><a class="header" href="#data-flow">Data flow</a></h2>
+<pre><code class="language-text">one entry header + explicit TargetSpec + explicit source inputs
+  -&gt; builtin or checked external preprocessing
+  -&gt; resilient parser
+  -&gt; internal deterministic lowering
+  -&gt; checked contract::SourcePackage
+  -&gt; canonical schema-v2 artifact
 </code></pre>
-<p><code>scan</code> short-circuits that flow into one high-level operation. <code>parse</code> and
-<code>driver</code> expose earlier stages for syntax-level consumers.</p>
-<h2 id="module-layout"><a class="header" href="#module-layout">Module Layout</a></h2>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Module</th><th>What it is actually for</th></tr>
-</thead>
-<tbody>
-<tr><td><code>driver</code></td><td>file-oriented parse flow using an external preprocessor</td></tr>
-<tr><td><code>preprocess</code></td><td>built-in preprocessing, tokenization, include resolution</td></tr>
-<tr><td><code>parse</code></td><td>fragment parsing and direct translation-unit parsing from strings</td></tr>
-<tr><td><code>scan</code></td><td>end-to-end header scanning into <code>SourcePackage</code></td></tr>
-<tr><td><code>extract</code></td><td>AST-to-IR lowering and normalization</td></tr>
-<tr><td><code>ir</code></td><td>durable PARC-owned source contract</td></tr>
-<tr><td><code>ast</code></td><td>syntax tree for parser-facing consumers</td></tr>
-<tr><td><code>visit</code></td><td>traversal hooks over the AST</td></tr>
-<tr><td><code>span</code> / <code>loc</code></td><td>source-position helpers</td></tr>
-<tr><td><code>print</code></td><td>debug-oriented AST printer</td></tr>
-<tr><td><code>intake</code></td><td>already-preprocessed source intake helpers</td></tr>
-</tbody>
-</table>
-</div>
-<h2 id="boundary"><a class="header" href="#boundary">Boundary</a></h2>
-<p>The strongest consumer boundary is <code>parc::ir::SourcePackage</code>.</p>
-<p>That is the point where PARC stops owning the problem. Anything involving
-binary evidence or Rust generation is downstream from PARC, even if tests and
-harnesses compose those crates together elsewhere.</p>
-<h2 id="reading-strategy"><a class="header" href="#reading-strategy">Reading Strategy</a></h2>
-<p>Read the book in one of these orders:</p>
-<ol>
-<li>source-contract path:
-<code>Getting Started -&gt; Source IR -&gt; Extraction -&gt; Header Scanning -&gt; API Contract</code></li>
-<li>parser-facing path:
-<code>Getting Started -&gt; Driver API -&gt; Parser API -&gt; AST Model -&gt; Visitor Pattern</code></li>
-<li>contributor/debug path:
-<code>Project Layout -&gt; Testing -&gt; Diagnostics And Printing -&gt; Parser Boundaries</code></li>
-</ol>
+<p>There is no public AST-to-contract shortcut. Contract construction needs the
+target, effective preprocessing inputs, source table, diagnostics, and
+completeness proof assembled together.</p>
+<h2 id="ownership"><a class="header" href="#ownership">Ownership</a></h2>
+<p>PARC owns preprocessing, parsing, source declarations and types, source
+diagnostics, provenance, and artifact identity. LINC owns measured ABI and
+binary evidence. GERC owns Rust lowering and generated build output.</p>
+<p>The strongest consumer boundary is <code>parc::contract::SourcePackage</code>. The former
+<code>ir</code> and <code>intake</code> modules are not compatibility paths.</p>
+<h2 id="reading-strategy"><a class="header" href="#reading-strategy">Reading strategy</a></h2>
+<ul>
+<li>Contract consumers: Source Contract, Header Scanning, API Contract.</li>
+<li>Parser consumers: Driver API, Parser API, AST Model, Visitor Pattern.</li>
+<li>Contributors: Project Layout, Testing, Parser Boundaries.</li>
+</ul>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
 
-                            <a rel="next prefetch" href="010_getting_started.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="005_hardening_status.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                             </a>
 
@@ -269,7 +220,7 @@ harnesses compose those crates together elsewhere.</p>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
 
-                    <a rel="next prefetch" href="010_getting_started.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="005_hardening_status.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                     </a>
             </nav>
@@ -291,11 +242,11 @@ harnesses compose those crates together elsewhere.</p>
 
         <script src="elasticlunr-ef4e11c1.min.js"></script>
         <script src="mark-09e88c2c.min.js"></script>
-        <script src="searcher-c2a407aa.js"></script>
+        <script src="searcher-09f2665d.js"></script>
 
         <script src="clipboard-1626706a.min.js"></script>
         <script src="highlight-abc7f01d.js"></script>
-        <script src="book-a0b12cfe.js"></script>
+        <script src="book-c22b7243.js"></script>
 
         <!-- Custom JS scripts -->
 

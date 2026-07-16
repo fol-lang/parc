@@ -15,8 +15,8 @@
         <link rel="icon" href="favicon-de23e50b.svg">
         <link rel="shortcut icon" href="favicon-8114d1fc.png">
         <link rel="stylesheet" href="css/variables-8adf115d.css">
-        <link rel="stylesheet" href="css/general-2459343d.css">
-        <link rel="stylesheet" href="css/chrome-ae938929.css">
+        <link rel="stylesheet" href="css/general-0392ca55.css">
+        <link rel="stylesheet" href="css/chrome-fc474251.css">
         <link rel="stylesheet" href="css/print-9e4910d8.css" media="print">
 
         <!-- Fonts -->
@@ -35,10 +35,10 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-b1c210d5.js";
+            window.path_to_searchindex_js = "searchindex-05c88c01.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-6cd1cca1.js"></script>
+        <script src="toc-aee9c670.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -175,88 +175,55 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="header-scanning"><a class="header" href="#header-scanning">Header Scanning</a></h1>
-<p><code>parc::scan</code> is the highest-level PARC API for people who want the source
-contract, not just the AST. It preprocesses headers, parses them, extracts
-items, and returns a <code>SourcePackage</code> plus the preprocessed source text.</p>
-<h2 id="quick-start"><a class="header" href="#quick-start">Quick Start</a></h2>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use parc::scan::{ScanConfig, scan_headers};
+<p><code>parc::scan</code> is the public source-contract producer.</p>
+<h2 id="required-configuration"><a class="header" href="#required-configuration">Required configuration</a></h2>
+<p><code>ScanConfig::new</code> requires a checked <code>TargetSpec</code>, a <code>PathMapping</code>, and a
+<code>PreprocessorMode</code>. There is no host/default target or implicit environment.</p>
+<pre><code class="language-rust ignore">use parc::scan::{scan_headers, PathMapping, PathMappingRule, PreprocessorMode, ScanConfig};
 
-let config = ScanConfig::new()
-    .entry_header("api.h")
-    .include_dir("/usr/include")
-    .define_flag("NDEBUG")
-    .with_builtin_preprocessor();
-
-let result = scan_headers(&amp;config).unwrap();
-let pkg = result.package;
-<span class="boring">}</span></code></pre>
-<h2 id="what-scan-really-owns"><a class="header" href="#what-scan-really-owns">What <code>scan</code> really owns</a></h2>
-<p>The scan path currently owns all of these steps:</p>
-<ol>
-<li>choose builtin or external preprocessing</li>
-<li>build the preprocessing environment</li>
-<li>parse the preprocessed translation unit</li>
-<li>extract declarations into <code>parc::ir</code></li>
-<li>attach input metadata and diagnostics</li>
-<li>optionally resolve typedef chains in the produced package</li>
-</ol>
-<p>That makes it the closest thing PARC has to a “source artifact producer”.</p>
-<h2 id="scanconfig"><a class="header" href="#scanconfig">ScanConfig</a></h2>
-<p>Builder for scan configuration:</p>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Method</th><th>Description</th></tr>
-</thead>
-<tbody>
-<tr><td><code>entry_header(path)</code></td><td>Add an entry-point header</td></tr>
-<tr><td><code>include_dir(path)</code></td><td>Add a preprocessor include search path</td></tr>
-<tr><td><code>define(name, value)</code></td><td>Add a preprocessor define with value</td></tr>
-<tr><td><code>define_flag(name)</code></td><td>Add a flag-style define (no value)</td></tr>
-<tr><td><code>with_compiler(cmd)</code></td><td>Set the external preprocessor command</td></tr>
-<tr><td><code>with_flavor(flavor)</code></td><td>Set the parser flavor</td></tr>
-<tr><td><code>with_builtin_preprocessor()</code></td><td>Use the built-in preprocessor</td></tr>
-</tbody>
-</table>
-</div>
-<h2 id="preprocessing-modes"><a class="header" href="#preprocessing-modes">Preprocessing Modes</a></h2>
-<h3 id="external-default"><a class="header" href="#external-default">External (default)</a></h3>
-<p>Uses <code>gcc -E</code> or <code>clang -E</code> to preprocess headers. Requires the
-compiler to be installed. Supports all system headers.</p>
-<h3 id="built-in"><a class="header" href="#built-in">Built-in</a></h3>
-<p>Uses <code>parc::preprocess</code> directly. This is useful for controlled fixtures and
-repo-local tests. It is not a promise that the built-in preprocessor already
-matches every hostile system-header stack.</p>
-<h2 id="scanresult"><a class="header" href="#scanresult">ScanResult</a></h2>
-<p>The scan produces:</p>
+let mapping = PathMapping::try_new([
+    PathMappingRule::try_new("/absolute/project", "project")?,
+])?;
+let config = ScanConfig::new(target, mapping, PreprocessorMode::Builtin)?
+    .entry_header("/absolute/project/include/api.h");
+let report = scan_headers(&amp;config)?;
+let package = report.package();</code></pre>
+<p>All source paths are absolute operational paths covered by canonical mapping
+rules. Physical roots are excluded from identity; logical paths and the mapping
+fingerprint are included. Duplicate or overlapping roots are rejected.</p>
+<p>Each scan accepts exactly one entry header. Scan separate translation units
+independently so their typedef and file-scope namespaces cannot leak or collide.</p>
+<h2 id="environment-policy"><a class="header" href="#environment-policy">Environment policy</a></h2>
+<p><code>EnvironmentPolicy::Hermetic</code> is the default. <code>EnvironmentPolicy::captured</code>
+accepts an explicit sorted set of variable names. Requested-but-unset variables
+are recorded distinctly, non-UTF values are rejected, and the external process
+starts from <code>env_clear()</code>.</p>
+<h2 id="preprocessors"><a class="header" href="#preprocessors">Preprocessors</a></h2>
 <ul>
-<li><code>package: SourcePackage</code> — the extracted declarations and metadata</li>
-<li><code>preprocessed_source: String</code> — the preprocessed source text</li>
+<li><code>Builtin</code> uses explicit target macros and configured include paths.</li>
+<li><code>External { executable }</code> requires an absolute file whose content fingerprint
+equals the compiler executable fingerprint in <code>TargetSpec</code>. Recorded argv
+paths are logical, while physical paths remain operational only.</li>
 </ul>
-<h2 id="intake"><a class="header" href="#intake">Intake</a></h2>
-<p>For already-preprocessed source (e.g., output of <code>gcc -E</code>), use
-<code>parc::intake::PreprocessedInput</code>:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use parc::intake::PreprocessedInput;
-
-let input = PreprocessedInput::from_string("int foo(void);")
-    .with_path("output.i")
-    .with_flavor(parc::driver::Flavor::GnuC11);
-
-let pkg = input.extract();
-<span class="boring">}</span></code></pre>
-<h2 id="what-to-expect-from-failures"><a class="header" href="#what-to-expect-from-failures">What to expect from failures</a></h2>
-<p><code>scan_headers()</code> can fail early on preprocessing setup problems, and it can
-also return a package with parse diagnostics if preprocessing succeeded but the
-source could not be fully parsed.</p>
-<p>That split is intentional:</p>
-<ul>
-<li>operational setup failures are <code>Err(...)</code></li>
-<li>source-level failures become <code>package.diagnostics</code> when possible</li>
-</ul>
+<p>Both modes honor C11 and C17 target standards. Define and undefine events are
+validated before they can become argv.</p>
+<p><code>ScanLimits</code> may tighten, but never raise, the production ceilings for input
+bytes, include recursion/count, macro work and nesting depth, tokens, generated
+output, external output, and external runtime. Hitting a ceiling is a named
+forcing diagnostic or a bounded <code>ScanError</code> when no truthful truncated artifact
+can be built.</p>
+<h2 id="result-and-completeness"><a class="header" href="#result-and-completeness">Result and completeness</a></h2>
+<p><code>scan_headers</code> returns a <code>ScanReport</code>; diagnostics live only in its immutable
+package. The traced built-in path remaps declaration, child, attribute,
+diagnostic, and recovery ranges to original logical files. It also populates
+transitive files, effective macros, include provenance, and macro expansions.
+Any unmappable range fails closed with <code>PARC-P2000</code>; it cannot silently become
+complete. A fully modeled built-in translation unit may therefore be
+<code>Completeness::Complete</code>.</p>
+<p>External declarations remain attached to a generated file and <code>PARC-P0001</code>
+forces <code>Partial</code>, because original provenance cannot be recovered from compiler
+text alone. Operational setup errors return <code>ScanError</code>. Parser recovery is
+structured and always has a forcing completeness effect.</p>
 
                     </main>
 
@@ -302,11 +269,11 @@ source could not be fully parsed.</p>
 
         <script src="elasticlunr-ef4e11c1.min.js"></script>
         <script src="mark-09e88c2c.min.js"></script>
-        <script src="searcher-c2a407aa.js"></script>
+        <script src="searcher-09f2665d.js"></script>
 
         <script src="clipboard-1626706a.min.js"></script>
         <script src="highlight-abc7f01d.js"></script>
-        <script src="book-a0b12cfe.js"></script>
+        <script src="book-c22b7243.js"></script>
 
         <!-- Custom JS scripts -->
 

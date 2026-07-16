@@ -15,8 +15,8 @@
         <link rel="icon" href="favicon-de23e50b.svg">
         <link rel="shortcut icon" href="favicon-8114d1fc.png">
         <link rel="stylesheet" href="css/variables-8adf115d.css">
-        <link rel="stylesheet" href="css/general-2459343d.css">
-        <link rel="stylesheet" href="css/chrome-ae938929.css">
+        <link rel="stylesheet" href="css/general-0392ca55.css">
+        <link rel="stylesheet" href="css/chrome-fc474251.css">
         <link rel="stylesheet" href="css/print-9e4910d8.css" media="print">
 
         <!-- Fonts -->
@@ -35,10 +35,10 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-b1c210d5.js";
+            window.path_to_searchindex_js = "searchindex-05c88c01.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-6cd1cca1.js"></script>
+        <script src="toc-aee9c670.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -175,42 +175,38 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="support-tiers"><a class="header" href="#support-tiers">Support Tiers</a></h1>
-<p>This chapter records a practical support posture for PARC’s public surface.</p>
-<p>It is meant to help downstream users judge which parts of the crate are the safest long-term
-integration points.</p>
-<h2 id="tier-1-core-consumer-surface"><a class="header" href="#tier-1-core-consumer-surface">Tier 1: Core Consumer Surface</a></h2>
-<p>These are the most important public surfaces to depend on:</p>
+<p>Support claims follow evidence boundaries. Public Rust visibility by itself is
+not a claim that a surface belongs to the certified H2 source contract.</p>
+<h2 id="tier-1-checked-source-contract-surface"><a class="header" href="#tier-1-checked-source-contract-surface">Tier 1: Checked source-contract surface</a></h2>
+<p>The preferred downstream interop boundary is:</p>
 <ul>
-<li><code>driver</code></li>
-<li><code>parse</code></li>
-<li><code>ast</code></li>
-<li><code>visit</code></li>
-<li><code>span</code></li>
-<li><code>loc</code></li>
+<li><code>scan::{ScanConfig, scan_headers}</code> for explicit-target production;</li>
+<li>immutable values under <code>contract</code>;</li>
+<li><code>contract::{encode_source_package, decode_source_package}</code> for transport;</li>
+<li>completeness, per-declaration support, diagnostics, selection, <code>retain</code>, and
+<code>merge</code> checks before consumption.</li>
 </ul>
-<p>These modules define the main parsing contract of the crate.</p>
-<h2 id="tier-2-debugging-and-inspection-surface"><a class="header" href="#tier-2-debugging-and-inspection-surface">Tier 2: Debugging And Inspection Surface</a></h2>
-<p>These are public and useful, but more inspection-oriented than contract-critical:</p>
+<p>This tier has the schema-v2 corpus, canonical IDs/fingerprints, bounded H2 scan
+evidence, and fail-closed validation described by the hardening matrix. It does
+not include ABI layout, symbols, providers, link plans, or Rust generation.</p>
+<h2 id="tier-2-syntax-oriented-public-surface"><a class="header" href="#tier-2-syntax-oriented-public-surface">Tier 2: Syntax-oriented public surface</a></h2>
+<p>The parser-oriented modules <code>driver</code>, <code>parse</code>, <code>ast</code>, <code>visit</code>, <code>span</code>, and <code>loc</code>
+remain public and have repository fixture coverage. <code>print</code> is useful for AST
+inspection. These APIs do not create a <code>SourcePackage</code>, and successful parsing
+does not upgrade an incomplete contract-producing scan to complete.</p>
+<p>Consumers that need the checked cross-crate source boundary should stay on Tier
+1 instead of rebuilding source meaning from these syntax APIs.</p>
+<h2 id="tier-3-repository-implementation-detail"><a class="header" href="#tier-3-repository-implementation-detail">Tier 3: Repository implementation detail</a></h2>
+<p>The following are contributor details, not downstream contracts:</p>
 <ul>
-<li><code>print</code></li>
-<li><code>Debug</code> views of AST nodes</li>
-<li>formatted error text</li>
+<li>parser file organization under <code>src/parser/</code>;</li>
+<li>the crate-private extractor and canonical wire DTOs;</li>
+<li>repository test features and fixture layout;</li>
+<li>incidental helper-module names and internal decomposition.</li>
 </ul>
-<p>They are valuable for debugging and tests, but long-lived tooling should still prefer structured
-data over formatted strings.</p>
-<h2 id="tier-3-contributor-oriented-knowledge"><a class="header" href="#tier-3-contributor-oriented-knowledge">Tier 3: Contributor-Oriented Knowledge</a></h2>
-<p>These are important for contributors but should not be treated as downstream contracts:</p>
-<ul>
-<li>parser file organization under <code>src/parser/</code></li>
-<li>helper-module layout</li>
-<li>incidental internal naming</li>
-<li>current implementation decomposition across grammar files</li>
-</ul>
-<p>These details may evolve as the parser changes.</p>
-<h2 id="consumer-guidance"><a class="header" href="#consumer-guidance">Consumer guidance</a></h2>
-<p>If you are building external tooling on top of PARC, bias toward Tier 1 surfaces first.
-Reach for Tier 2 when you need diagnostics or debugging support.
-Treat Tier 3 as implementation detail unless you are actively contributing to PARC itself.</p>
+<p>Rust API compatibility for public surfaces follows <code>RELEASE.md</code>. Schema and ID
+compatibility use their own explicit versions; package SemVer never substitutes
+for checking artifact versions and completeness.</p>
 
                     </main>
 
@@ -256,11 +252,11 @@ Treat Tier 3 as implementation detail unless you are actively contributing to PA
 
         <script src="elasticlunr-ef4e11c1.min.js"></script>
         <script src="mark-09e88c2c.min.js"></script>
-        <script src="searcher-c2a407aa.js"></script>
+        <script src="searcher-09f2665d.js"></script>
 
         <script src="clipboard-1626706a.min.js"></script>
         <script src="highlight-abc7f01d.js"></script>
-        <script src="book-a0b12cfe.js"></script>
+        <script src="book-c22b7243.js"></script>
 
         <!-- Custom JS scripts -->
 

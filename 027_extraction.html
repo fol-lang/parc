@@ -15,8 +15,8 @@
         <link rel="icon" href="favicon-de23e50b.svg">
         <link rel="shortcut icon" href="favicon-8114d1fc.png">
         <link rel="stylesheet" href="css/variables-8adf115d.css">
-        <link rel="stylesheet" href="css/general-2459343d.css">
-        <link rel="stylesheet" href="css/chrome-ae938929.css">
+        <link rel="stylesheet" href="css/general-0392ca55.css">
+        <link rel="stylesheet" href="css/chrome-fc474251.css">
         <link rel="stylesheet" href="css/print-9e4910d8.css" media="print">
 
         <!-- Fonts -->
@@ -35,10 +35,10 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-b1c210d5.js";
+            window.path_to_searchindex_js = "searchindex-05c88c01.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-6cd1cca1.js"></script>
+        <script src="toc-aee9c670.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -175,93 +175,20 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="extraction"><a class="header" href="#extraction">Extraction</a></h1>
-<p>The <code>parc::extract</code> module converts a parsed C AST into the normalized
-<code>SourcePackage</code> IR. It handles all declaration families.</p>
-<h2 id="quick-start"><a class="header" href="#quick-start">Quick Start</a></h2>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use parc::extract;
-
-let source = r#"
-    typedef unsigned long size_t;
-    void *malloc(size_t size);
-    struct point { int x; int y; };
-"#;
-
-let pkg = extract::extract_from_source(source).unwrap();
-assert_eq!(pkg.function_count(), 1);
-assert_eq!(pkg.record_count(), 1);
-assert_eq!(pkg.type_alias_count(), 1);
-<span class="boring">}</span></code></pre>
-<h2 id="api-functions"><a class="header" href="#api-functions">API Functions</a></h2>
-<h3 id="extract_from_source"><a class="header" href="#extract_from_source"><code>extract_from_source</code></a></h3>
-<p>Parse and extract in one step using GNU C11 flavor:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>let pkg = parc::extract::extract_from_source("int foo(void);").unwrap();
-<span class="boring">}</span></code></pre>
-<h3 id="parse_and_extract"><a class="header" href="#parse_and_extract"><code>parse_and_extract</code></a></h3>
-<p>Parse and extract with a specific flavor:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>let pkg = parc::extract::parse_and_extract(
-    "int foo(void);",
-    parc::driver::Flavor::StdC11,
-).unwrap();
-<span class="boring">}</span></code></pre>
-<h3 id="extract_from_translation_unit"><a class="header" href="#extract_from_translation_unit"><code>extract_from_translation_unit</code></a></h3>
-<p>Extract from an already-parsed AST:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>let unit = parc::parse::translation_unit("int foo(void);", parc::driver::Flavor::StdC11).unwrap();
-let pkg = parc::extract::extract_from_translation_unit(&amp;unit, Some("test.h".into()));
-<span class="boring">}</span></code></pre>
-<h3 id="parse_and_extract_resilient"><a class="header" href="#parse_and_extract_resilient"><code>parse_and_extract_resilient</code></a></h3>
-<p>Parse with error recovery and extract what’s possible:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>let pkg = parc::extract::parse_and_extract_resilient(
-    "int valid;\n@@@bad@@@;\nint also_valid;",
-    parc::driver::Flavor::StdC11,
-);
-<span class="boring">}</span></code></pre>
-<h3 id="extract_file"><a class="header" href="#extract_file"><code>extract_file</code></a></h3>
-<p>Read a file from disk and extract:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>let pkg = parc::extract::extract_file("path/to/header.h", parc::driver::Flavor::GnuC11).unwrap();
-assert!(pkg.source_path.is_some());
-<span class="boring">}</span></code></pre>
-<h2 id="what-gets-extracted"><a class="header" href="#what-gets-extracted">What Gets Extracted</a></h2>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>C Declaration</th><th>Source Item</th></tr>
-</thead>
-<tbody>
-<tr><td><code>typedef int T;</code></td><td><code>SourceTypeAlias</code></td></tr>
-<tr><td><code>int foo(void);</code></td><td><code>SourceFunction</code></td></tr>
-<tr><td><code>int foo(void) { ... }</code></td><td><code>SourceFunction</code> (body ignored)</td></tr>
-<tr><td><code>struct S { int x; };</code></td><td><code>SourceRecord</code></td></tr>
-<tr><td><code>struct S;</code></td><td><code>SourceRecord</code> (opaque)</td></tr>
-<tr><td><code>union U { ... };</code></td><td><code>SourceRecord</code> (Union kind)</td></tr>
-<tr><td><code>enum E { A, B };</code></td><td><code>SourceEnum</code></td></tr>
-<tr><td><code>extern int x;</code></td><td><code>SourceVariable</code></td></tr>
-<tr><td><code>static int f() {}</code></td><td>Diagnostic (not bindable)</td></tr>
-<tr><td><code>_Static_assert(...)</code></td><td>Diagnostic</td></tr>
-</tbody>
-</table>
-</div>
-<h2 id="diagnostics"><a class="header" href="#diagnostics">Diagnostics</a></h2>
-<p>The extractor produces diagnostics for constructs it cannot fully represent:</p>
-<ul>
-<li>Bitfield widths (partial representation)</li>
-<li>Inline/noreturn specifiers (ignored)</li>
-<li>Calling convention attributes (captured on function, other attributes warned)</li>
-<li>K&amp;R function declarations (unsupported)</li>
-<li>Block pointers (unsupported)</li>
-<li>Static functions (not bindable)</li>
-</ul>
+<p>AST-to-contract extraction is an internal scan stage, not a standalone public
+API. This prevents callers from creating a declaration list without the exact
+target, source table, effective preprocessing inputs, diagnostics, provenance,
+and completeness state required by the contract.</p>
+<p>The internal extractor is deterministic and two-pass:</p>
+<ol>
+<li>index ordinary, tag, and anonymous identities;</li>
+<li>lower occurrences, declaration kinds, child IDs, types, and attributes.</li>
+</ol>
+<p>This permits forward tag and typedef references to use stable semantic IDs.
+Incompatible redeclarations and unusable ranges are diagnosed rather than
+silently replaced or assigned placeholder spelling.</p>
+<p>Use <code>parc::scan::scan_headers</code> to produce a checked <code>SourcePackage</code>. Use
+<code>parc::parse</code> or <code>parc::driver</code> when only an AST is required.</p>
 
                     </main>
 
@@ -307,11 +234,11 @@ assert!(pkg.source_path.is_some());
 
         <script src="elasticlunr-ef4e11c1.min.js"></script>
         <script src="mark-09e88c2c.min.js"></script>
-        <script src="searcher-c2a407aa.js"></script>
+        <script src="searcher-09f2665d.js"></script>
 
         <script src="clipboard-1626706a.min.js"></script>
         <script src="highlight-abc7f01d.js"></script>
-        <script src="book-a0b12cfe.js"></script>
+        <script src="book-c22b7243.js"></script>
 
         <!-- Custom JS scripts -->
 

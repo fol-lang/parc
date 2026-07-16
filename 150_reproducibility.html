@@ -15,8 +15,8 @@
         <link rel="icon" href="favicon-de23e50b.svg">
         <link rel="shortcut icon" href="favicon-8114d1fc.png">
         <link rel="stylesheet" href="css/variables-8adf115d.css">
-        <link rel="stylesheet" href="css/general-2459343d.css">
-        <link rel="stylesheet" href="css/chrome-ae938929.css">
+        <link rel="stylesheet" href="css/general-0392ca55.css">
+        <link rel="stylesheet" href="css/chrome-fc474251.css">
         <link rel="stylesheet" href="css/print-9e4910d8.css" media="print">
 
         <!-- Fonts -->
@@ -35,10 +35,10 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-b1c210d5.js";
+            window.path_to_searchindex_js = "searchindex-05c88c01.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-6cd1cca1.js"></script>
+        <script src="toc-aee9c670.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -189,11 +189,11 @@
 <h2 id="best-practices"><a class="header" href="#best-practices">Best practices</a></h2>
 <p>For durable automation:</p>
 <ol>
-<li>prefer explicit <code>Config</code> values over ambient defaults in CI</li>
-<li>pin include paths with <code>-I...</code> when they matter</li>
-<li>use <code>-nostdinc</code> for isolated fixture testing when appropriate</li>
-<li>keep preprocessed snapshots for hard parser regressions</li>
-<li>keep the parser flavor explicit in tests</li>
+<li>construct scan <code>TargetSpec</code> from checked compiler and data-model evidence</li>
+<li>map every absolute operational path to a canonical logical path</li>
+<li>use <code>EnvironmentPolicy::Hermetic</code> or capture named variables explicitly</li>
+<li>fingerprint-check an external preprocessor against <code>TargetSpec</code></li>
+<li>keep preprocessed snapshots for syntax-only parser regressions</li>
 </ol>
 <h2 id="deterministic-parse-debugging"><a class="header" href="#deterministic-parse-debugging">Deterministic parse debugging</a></h2>
 <p>If a real file parse is inconsistent across machines, a strong debugging move is:</p>
@@ -213,11 +213,11 @@ output. For parser bugs that depend on preprocessing, a pinned <code>.i</code> f
 <h2 id="consumer-guidance"><a class="header" href="#consumer-guidance">Consumer guidance</a></h2>
 <p>If PARC is part of a larger pipeline, keep the following recorded somewhere durable:</p>
 <ul>
-<li>preprocessor executable</li>
-<li>preprocessor arguments</li>
-<li>flavor</li>
+<li>target and compiler fingerprints</li>
+<li>logical path mapping and preprocessor arguments</li>
+<li>environment policy and captured-variable fingerprints</li>
 <li>representative fixtures</li>
-<li>expected parse outcome</li>
+<li>expected package fingerprint, completeness, and diagnostics</li>
 </ul>
 <p>Without that context, debugging parser regressions is much slower.</p>
 
@@ -265,11 +265,11 @@ output. For parser bugs that depend on preprocessing, a pinned <code>.i</code> f
 
         <script src="elasticlunr-ef4e11c1.min.js"></script>
         <script src="mark-09e88c2c.min.js"></script>
-        <script src="searcher-c2a407aa.js"></script>
+        <script src="searcher-09f2665d.js"></script>
 
         <script src="clipboard-1626706a.min.js"></script>
         <script src="highlight-abc7f01d.js"></script>
-        <script src="book-a0b12cfe.js"></script>
+        <script src="book-c22b7243.js"></script>
 
         <!-- Custom JS scripts -->
 

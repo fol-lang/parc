@@ -15,8 +15,8 @@
         <link rel="icon" href="favicon-de23e50b.svg">
         <link rel="shortcut icon" href="favicon-8114d1fc.png">
         <link rel="stylesheet" href="css/variables-8adf115d.css">
-        <link rel="stylesheet" href="css/general-2459343d.css">
-        <link rel="stylesheet" href="css/chrome-ae938929.css">
+        <link rel="stylesheet" href="css/general-0392ca55.css">
+        <link rel="stylesheet" href="css/chrome-fc474251.css">
         <link rel="stylesheet" href="css/print-9e4910d8.css" media="print">
 
         <!-- Fonts -->
@@ -35,10 +35,10 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-b1c210d5.js";
+            window.path_to_searchindex_js = "searchindex-05c88c01.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-6cd1cca1.js"></script>
+        <script src="toc-aee9c670.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -175,90 +175,55 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="hardening-matrix"><a class="header" href="#hardening-matrix">Hardening Matrix</a></h1>
-<p>This chapter translates the large PARC test surface into an explicit hardening
-ladder.</p>
-<p>The important point is not “how many tests exist”. The important point is which
-surfaces are carrying confidence for real-header parsing, preprocessing, and
-source extraction.</p>
-<h2 id="how-to-read-the-matrix"><a class="header" href="#how-to-read-the-matrix">How To Read The Matrix</a></h2>
-<p>Read each surface on three axes:</p>
+<p>Confidence is separated by evidence type. A parser fixture cannot prove a
+checked source contract, and external generated-source text cannot prove
+original macro provenance.</p>
+<h2 id="required-hermetic-evidence"><a class="header" href="#required-hermetic-evidence">Required hermetic evidence</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Surface</th><th>Evidence</th></tr>
+</thead>
+<tbody>
+<tr><td>Frozen contract corpus</td><td>Canonical schema-v2 bytes, IDs, target/source fingerprints, decoder and validation invariants</td></tr>
+<tr><td>Scan-contract tests</td><td>Explicit target/path/environment configuration, two-pass lowering, ranges, diagnostics, relocation, and recovery</td></tr>
+<tr><td>Parser API and reftests</td><td>Grammar, AST, visitor, and printer behavior</td></tr>
+<tr><td>Package test</td><td>Candidate archive default tests/doctests plus a clean downstream consumer</td></tr>
+</tbody>
+</table>
+</div>
+<p><code>make test-contract</code> is the focused contract lane. <code>make test</code> adds repository
+fixtures and doctests. Neither may rely on ambient C include variables.</p>
+<h2 id="required-system-evidence"><a class="header" href="#required-system-evidence">Required system evidence</a></h2>
+<p>System-dependent filters must select at least one test. The Make helper fails a
+zero-test filter so a rename cannot silently greenwash the lane.</p>
+<p>Current required system evidence covers:</p>
 <ul>
-<li>hermetic or host-dependent</li>
-<li>parser-only versus scan-first</li>
-<li>success path versus conservative failure path</li>
+<li>the GCC enum-representation preservation corpus;</li>
+<li>certified built-in versus GCC and Clang declaration/type differential checks;</li>
+<li>external-fixture refresh metadata;</li>
+<li>the manifest-driven full-app system runner.</li>
 </ul>
-<p>A surface is stronger when it is:</p>
+<p>This evidence is compiler/fixture specific. It is not a claim of arbitrary
+OpenSSL, libcurl, libc, SDK, or host-header support.</p>
+<h2 id="conservative-failure-evidence"><a class="header" href="#conservative-failure-evidence">Conservative-failure evidence</a></h2>
+<p>Hardening tests also prove that PARC reports uncertainty:</p>
 <ul>
-<li>hermetic</li>
-<li>scan-first</li>
-<li>repeated deterministically</li>
-<li>tied to a realistic system or library family</li>
+<li>external generated provenance forces <code>PARC-P0001</code> and partial completeness;</li>
+<li>unsupported directives, pragmas, macro operators, and conditional forms fail
+closed with exact codes;</li>
+<li>include, macro, token, input, output, and process ceilings are bounded;</li>
+<li>structured parser recovery retains skipped ranges;</li>
+<li>malformed visibility and conflicting calling conventions reject;</li>
+<li>unknown ABI-relevant attributes preserve spelling and force partial;</li>
+<li>invalid or unrepresentable declarations are not assigned guessed IDs,
+values, or placeholder spellings.</li>
 </ul>
-<h2 id="tier-1-hermetic-canonical-baselines"><a class="header" href="#tier-1-hermetic-canonical-baselines">Tier 1: Hermetic Canonical Baselines</a></h2>
-<p>These are the first surfaces that should stay green on every machine:</p>
-<ul>
-<li>vendored musl <code>stdint</code></li>
-<li>vendored zlib</li>
-<li>vendored libpng builtin-preprocessor success path</li>
-<li>repo-owned <code>macro_env_a</code> hostile macro corpus</li>
-<li>repo-owned <code>type_env_b</code> hostile type corpus</li>
-<li>parser and extraction corpus fixtures under <code>src/tests/**</code></li>
-</ul>
-<p>These matter because they exercise:</p>
-<ul>
-<li>multi-header scanning</li>
-<li>macro and include handling</li>
-<li>extraction into <code>SourcePackage</code></li>
-<li>deterministic behavior without relying on the host toolchain layout</li>
-</ul>
-<h2 id="tier-2-host-dependent-canonical-ladders"><a class="header" href="#tier-2-host-dependent-canonical-ladders">Tier 2: Host-Dependent Canonical Ladders</a></h2>
-<p>These should stay green on developer and CI hosts where the headers exist, but
-they are not the first portability baseline:</p>
-<ul>
-<li>OpenSSL public wrapper extraction</li>
-<li>combined Linux event-loop wrapper extraction</li>
-<li>larger libc and system-header clusters</li>
-</ul>
-<p>These surfaces matter because they are closer to the “real ugly header world”
-target than the small synthetic fixtures.</p>
-<h2 id="tier-3-hostile-and-conservative-failure-surfaces"><a class="header" href="#tier-3-hostile-and-conservative-failure-surfaces">Tier 3: Hostile And Conservative-Failure Surfaces</a></h2>
-<p>These prove that PARC is refusing or degrading honestly instead of pretending to
-understand everything:</p>
-<ul>
-<li>hostile declaration fixtures</li>
-<li>repo-owned hostile corpora that force builtin-preprocessor macro and typedef expansion</li>
-<li>recovery fixtures</li>
-<li>unsupported or partial declaration families that still emit diagnostics and
-partial metadata</li>
-<li>extraction-status summaries that distinguish supported, partial, and
-unsupported output trust</li>
-</ul>
-<p>For release purposes, these failures are good when they are:</p>
-<ul>
-<li>deterministic</li>
-<li>diagnostic</li>
-<li>documented</li>
-</ul>
-<h2 id="determinism-anchors"><a class="header" href="#determinism-anchors">Determinism Anchors</a></h2>
-<p>The most important repeat-run anchors right now are:</p>
-<ul>
-<li>vendored musl scan</li>
-<li>vendored zlib scan</li>
-<li>vendored libpng scan</li>
-<li><code>macro_env_a</code> scan</li>
-<li><code>type_env_b</code> scan</li>
-<li>OpenSSL wrapper extraction</li>
-<li>combined Linux event-loop wrapper extraction</li>
-</ul>
-<p>If any of those become unstable, the release posture should drop immediately.</p>
-<h2 id="what-this-matrix-does-not-mean"><a class="header" href="#what-this-matrix-does-not-mean">What This Matrix Does Not Mean</a></h2>
-<p>This matrix does not mean:</p>
-<ul>
-<li>every random system library now parses perfectly</li>
-<li>every preprocessor corner is solved</li>
-<li>every large host-dependent surface is equally mature</li>
-</ul>
-<p>It means the current confidence ladder is explicit instead of implied.</p>
+<h2 id="interpretation"><a class="header" href="#interpretation">Interpretation</a></h2>
+<p>A green H2 matrix means the schema, checked construction, deterministic traced
+built-in scan, bounded failure paths, composition checks, and stated compiler
+fixtures hold. It does not mean arbitrary compiler-extension or host-SDK
+preprocessing, layout proof, or whole-toolchain production certification.</p>
 
                     </main>
 
@@ -304,11 +269,11 @@ unsupported output trust</li>
 
         <script src="elasticlunr-ef4e11c1.min.js"></script>
         <script src="mark-09e88c2c.min.js"></script>
-        <script src="searcher-c2a407aa.js"></script>
+        <script src="searcher-09f2665d.js"></script>
 
         <script src="clipboard-1626706a.min.js"></script>
         <script src="highlight-abc7f01d.js"></script>
-        <script src="book-a0b12cfe.js"></script>
+        <script src="book-c22b7243.js"></script>
 
         <!-- Custom JS scripts -->
 

@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Introduction - PARC Reference</title>
+        <title>Contract Migration - PARC Reference</title>
 
 
         <!-- Custom HTML head -->
@@ -174,44 +174,46 @@
 
                 <div id="mdbook-content" class="content">
                     <main>
-                        <h1 id="parc-reference"><a class="header" href="#parc-reference">PARC Reference</a></h1>
-<p>PARC is the source frontend of the toolchain. It has two public surfaces:</p>
-<ol>
-<li><code>scan</code> and <code>contract</code> for checked source artifacts;</li>
-<li><code>driver</code>, <code>parse</code>, <code>ast</code>, and <code>visit</code> for syntax-level tooling.</li>
-</ol>
-<h2 id="data-flow"><a class="header" href="#data-flow">Data flow</a></h2>
-<pre><code class="language-text">one entry header + explicit TargetSpec + explicit source inputs
-  -&gt; builtin or checked external preprocessing
-  -&gt; resilient parser
-  -&gt; internal deterministic lowering
-  -&gt; checked contract::SourcePackage
-  -&gt; canonical schema-v2 artifact
+                        <h1 id="contract-migration"><a class="header" href="#contract-migration">Contract Migration</a></h1>
+<p>Consumers moving from parser-owned extraction or mutable source packages must
+adopt the checked PARC schema-v2 boundary:</p>
+<pre><code class="language-text">C entry header -&gt; parc::scan -&gt; parc::contract::SourcePackage -&gt; downstream
 </code></pre>
-<p>There is no public AST-to-contract shortcut. Contract construction needs the
-target, effective preprocessing inputs, source table, diagnostics, and
-completeness proof assembled together.</p>
-<h2 id="ownership"><a class="header" href="#ownership">Ownership</a></h2>
-<p>PARC owns preprocessing, parsing, source declarations and types, source
-diagnostics, provenance, and artifact identity. LINC owns measured ABI and
-binary evidence. GERC owns Rust lowering and generated build output.</p>
-<p>The strongest consumer boundary is <code>parc::contract::SourcePackage</code>. The former
-<code>ir</code> and <code>intake</code> modules are not compatibility paths.</p>
-<h2 id="reading-strategy"><a class="header" href="#reading-strategy">Reading strategy</a></h2>
-<ul>
-<li>Contract consumers: Source Contract, Header Scanning, API Contract.</li>
-<li>Parser consumers: Driver API, Parser API, AST Model, Visitor Pattern.</li>
-<li>Contributors: Project Layout, Testing, Parser Boundaries.</li>
-</ul>
+<h2 id="required-changes"><a class="header" href="#required-changes">Required changes</a></h2>
+<ol>
+<li>Replace direct AST extraction or mutable package builders with
+<code>scan::scan_headers</code>.</li>
+<li>Construct a checked <code>contract::TargetSpec</code> from explicit compiler and C
+data-model evidence.</li>
+<li>Map absolute source roots to canonical logical roots with <code>PathMapping</code>.</li>
+<li>Consume <code>SourceDeclarationKind</code> and <code>CTypeKind</code> instead of ad hoc item/type
+projections.</li>
+<li>Check package completeness and per-declaration support.</li>
+<li>Move layout, symbol, and link facts to LINC; move Rust lowering to GERC.</li>
+</ol>
+<p>The former public <code>parc::ir</code>, <code>parc::intake</code>, extractor functions,
+<code>SourcePackageBuilder</code>, in-place filtering, and lossy package merge APIs have no
+compatibility layer. Use <code>SourcePackage::retain</code> for a checked transitive
+declaration projection and <code>SourcePackage::merge</code> for target/input-compatible
+artifacts; stable-ID conflicts are errors rather than overwrite rules.</p>
+<h2 id="type-references"><a class="header" href="#type-references">Type references</a></h2>
+<p>Types use semantic declaration IDs for aliases, records, and enums. Pointer
+qualifiers are attached to their exact pointer layer; pointee qualifiers remain
+on the pointee. Function-pointer types retain parameter types, prototype, and
+calling convention. Do not flatten these structures to names.</p>
+<h2 id="artifact-handling"><a class="header" href="#artifact-handling">Artifact handling</a></h2>
+<p>Use <code>contract::decode_source_package</code> for untrusted bytes and
+<code>contract::encode_source_package</code> for canonical output. Do not deserialize the
+domain model with Serde or copy a stored fingerprint into a new package.</p>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-
-                            <a rel="next prefetch" href="005_hardening_status.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
-                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
+                            <a rel="prev" href="205_readiness_scorecard.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                             </a>
+
 
                         <div style="clear: both"></div>
                     </nav>
@@ -219,10 +221,10 @@ binary evidence. GERC owns Rust lowering and generated build output.</p>
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-
-                    <a rel="next prefetch" href="005_hardening_status.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
-                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
+                    <a rel="prev" href="205_readiness_scorecard.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                     </a>
+
             </nav>
 
         </div>

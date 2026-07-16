@@ -15,8 +15,8 @@
         <link rel="icon" href="favicon-de23e50b.svg">
         <link rel="shortcut icon" href="favicon-8114d1fc.png">
         <link rel="stylesheet" href="css/variables-8adf115d.css">
-        <link rel="stylesheet" href="css/general-2459343d.css">
-        <link rel="stylesheet" href="css/chrome-ae938929.css">
+        <link rel="stylesheet" href="css/general-0392ca55.css">
+        <link rel="stylesheet" href="css/chrome-fc474251.css">
         <link rel="stylesheet" href="css/print-9e4910d8.css" media="print">
 
         <!-- Fonts -->
@@ -35,10 +35,10 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-b1c210d5.js";
+            window.path_to_searchindex_js = "searchindex-05c88c01.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-6cd1cca1.js"></script>
+        <script src="toc-aee9c670.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -176,6 +176,22 @@
                     <main>
                         <h1 id="end-to-end-workflows"><a class="header" href="#end-to-end-workflows">End-To-End Workflows</a></h1>
 <p>This chapter ties the public modules together into practical usage patterns.</p>
+<h2 id="workflow-0-produce-the-checked-source-contract"><a class="header" href="#workflow-0-produce-the-checked-source-contract">Workflow 0: Produce The Checked Source Contract</a></h2>
+<pre><code class="language-rust ignore">use parc::scan::{
+    scan_headers, PathMapping, PathMappingRule, PreprocessorMode, ScanConfig,
+};
+
+let mapping = PathMapping::try_new([
+    PathMappingRule::try_new("/absolute/project", "project")?,
+])?;
+let config = ScanConfig::new(checked_target, mapping, PreprocessorMode::Builtin)?
+    .entry_header("/absolute/project/include/demo.h");
+let report = scan_headers(&amp;config)?;
+let package = report.package();</code></pre>
+<p>Use this path when another stage needs a <code>SourcePackage</code>. Check completeness
+before consuming declarations: traced built-in scans may be complete, while
+external generated-source scans remain partial. The remaining workflows are
+syntax-oriented and do not construct a contract.</p>
 <h2 id="workflow-1-parse-a-real-c-file"><a class="header" href="#workflow-1-parse-a-real-c-file">Workflow 1: Parse A Real C File</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
@@ -344,11 +360,11 @@ println!("{}", out);
 
         <script src="elasticlunr-ef4e11c1.min.js"></script>
         <script src="mark-09e88c2c.min.js"></script>
-        <script src="searcher-c2a407aa.js"></script>
+        <script src="searcher-09f2665d.js"></script>
 
         <script src="clipboard-1626706a.min.js"></script>
         <script src="highlight-abc7f01d.js"></script>
-        <script src="book-a0b12cfe.js"></script>
+        <script src="book-c22b7243.js"></script>
 
         <!-- Custom JS scripts -->
 

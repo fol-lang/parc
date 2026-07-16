@@ -15,8 +15,8 @@
         <link rel="icon" href="favicon-de23e50b.svg">
         <link rel="shortcut icon" href="favicon-8114d1fc.png">
         <link rel="stylesheet" href="css/variables-8adf115d.css">
-        <link rel="stylesheet" href="css/general-2459343d.css">
-        <link rel="stylesheet" href="css/chrome-ae938929.css">
+        <link rel="stylesheet" href="css/general-0392ca55.css">
+        <link rel="stylesheet" href="css/chrome-fc474251.css">
         <link rel="stylesheet" href="css/print-9e4910d8.css" media="print">
 
         <!-- Fonts -->
@@ -35,10 +35,10 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-b1c210d5.js";
+            window.path_to_searchindex_js = "searchindex-05c88c01.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-6cd1cca1.js"></script>
+        <script src="toc-aee9c670.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -175,185 +175,80 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="testing"><a class="header" href="#testing">Testing</a></h1>
-<p><code>parc</code> is the source-meaning crate in the toolchain, so its tests should prove
-three things:</p>
+<p>PARC tests three distinct public surfaces:</p>
 <ul>
-<li>the frontend accepts or rejects source as intended</li>
-<li>the extracted <code>SourcePackage</code> contract carries the intended meaning</li>
-<li>cross-package composition can start from <code>parc</code> artifacts without relying on
-<code>parc</code> internals</li>
+<li>parser and AST behavior</li>
+<li>the checked <code>SourcePackage</code> contract</li>
+<li>the explicit <code>scan_headers</code> path that produces that contract</li>
 </ul>
-<p>PARC has two broad testing layers:</p>
-<ul>
-<li>direct parser/API tests in <code>src/tests</code></li>
-<li>corpus-style fixtures under <code>test/reftests/</code> and, when present, <code>test/full_apps/</code></li>
-</ul>
-<p>It also now has explicit grouped failure suites:</p>
-<ul>
-<li><code>failure_matrix_preprocess</code> for scan/preprocessor hard failures and
-conservative scan outcomes</li>
-<li><code>failure_matrix_source</code> for source-parse hard failures, resilient recovery,
-and diagnostic-preserving extraction</li>
-</ul>
-<h2 id="basic-commands"><a class="header" href="#basic-commands">Basic commands</a></h2>
-<p>The repository <code>Makefile</code> wraps the normal Cargo flow:</p>
-<pre><code class="language-sh">make build
+<p>Use the repository <code>Makefile</code>; it defines the supported validation lanes.</p>
+<h2 id="required-lanes"><a class="header" href="#required-lanes">Required lanes</a></h2>
+<pre><code class="language-sh">make fmt-check
+make lint
+make check-features
 make test
+make test-contract
+make test-package
+make docs-check
 </code></pre>
-<p>Those run:</p>
-<ul>
-<li><code>cargo build --release</code></li>
-<li><code>cargo test</code></li>
-</ul>
-<h2 id="hermeticity-split"><a class="header" href="#hermeticity-split">Hermeticity split</a></h2>
-<p>The large PARC surfaces should be read in three groups:</p>
-<ul>
-<li>always-on hermetic baselines</li>
-<li>host-dependent but high-value ladders</li>
-<li>hostile or conservative-failure surfaces</li>
-</ul>
-<p>The hermetic baselines should remain the default confidence floor. The
-host-dependent ladders should strengthen confidence when available. The failure
-surfaces should prove that PARC stays diagnostic and deterministic when it
-cannot fully model a header family yet.</p>
-<h2 id="contract-tests"><a class="header" href="#contract-tests">Contract tests</a></h2>
-<p>Contract tests are the tests a downstream toolchain should treat as the main
-statement of support:</p>
-<ul>
-<li><code>parse_api</code> tests for direct parser entry points</li>
-<li>extraction tests for declaration/source modeling</li>
-<li>scan tests for preprocessing and multi-file source intake</li>
-<li>consumability tests for the <code>SourcePackage</code> artifact</li>
-</ul>
-<p>If one of those changes meaningfully, the corresponding book chapter should
-change in the same patch.</p>
-<h2 id="parse-api-tests"><a class="header" href="#parse-api-tests">Parse API tests</a></h2>
-<p><code>src/tests/parse_api.rs</code> checks the public <code>parse</code> entry points directly.</p>
-<p>Examples covered in the repository include:</p>
-<ul>
-<li>constants</li>
-<li>expressions</li>
-<li>declarations</li>
-<li>statements</li>
-<li>translation units</li>
-</ul>
-<p>This layer is useful when:</p>
-<ul>
-<li>adding a new public parser entry point</li>
-<li>fixing a small grammar regression</li>
-<li>documenting a minimal parsing example</li>
-</ul>
-<h2 id="reference-tests"><a class="header" href="#reference-tests">Reference tests</a></h2>
-<p>The reftest harness in <code>src/tests/reftests.rs</code> reads files from <code>test/reftests/</code>.
-Each case stores:</p>
-<ul>
-<li>the source snippet</li>
-<li>optional <code>#pragma</code> directives that affect parsing</li>
-<li>an expected AST printout between <code>/*===</code> and <code>===*/</code></li>
-</ul>
-<p>That means reftests verify both:</p>
-<ul>
-<li>whether parsing succeeds</li>
-<li>whether the produced tree matches the expected printer output</li>
-</ul>
-<h2 id="reftest-update-workflow"><a class="header" href="#reftest-update-workflow">Reftest update workflow</a></h2>
-<p>The harness supports <code>TEST_UPDATE=1</code> to rewrite expected outputs when printer changes are
-intentional.</p>
-<pre><code class="language-sh">TEST_UPDATE=1 cargo test reftests
+<p><code>make test</code> enables <code>repo-tests</code>, clears ambient C include variables, and also
+runs doctests. <code>make test-contract</code> is the focused, hermetic preservation lane
+for the frozen contract corpus and scan lowering. <code>make test-package</code> checks the
+candidate archive’s default tests and doctests, then tests a clean consumer
+against the unpacked <code>follang-parc</code> identity.</p>
+<p><code>repo-tests</code>, <code>system-tests</code>, and <code>dev-pegviz</code> are repository harness switches,
+not consumer capabilities. Their fixture trees are intentionally outside the
+package include list. The archive promises the default library tests and
+doctests exercised by <code>make test-package</code>, not the repository-only lanes.</p>
+<h2 id="system-dependent-lanes"><a class="header" href="#system-dependent-lanes">System-dependent lanes</a></h2>
+<pre><code class="language-sh">make test-system SYSTEM_TEST_MODE=optional
+make test-system SYSTEM_TEST_MODE=required
 </code></pre>
-<p>Use that carefully. It is appropriate after deliberate AST or printer changes, not as a substitute
-for reviewing diffs.</p>
-<h2 id="full-app-fixtures"><a class="header" href="#full-app-fixtures">Full-app fixtures</a></h2>
-<p>The repository includes a full-app harness in <code>src/tests/full_apps.rs</code>. It supports fixture
-directories with a <code>fixture.toml</code> manifest describing:</p>
-<ul>
-<li><code>mode</code></li>
-<li><code>flavor</code></li>
-<li><code>entry</code></li>
-<li><code>expected</code></li>
-<li><code>include_dirs</code></li>
-<li><code>allow_system_includes</code></li>
-<li><code>tags</code></li>
-</ul>
-<p>Supported modes are:</p>
-<ul>
-<li><code>translation_unit</code></li>
-<li><code>driver</code></li>
-<li><code>preprocessed</code></li>
-</ul>
-<p>This is the right layer for:</p>
-<ul>
-<li>multi-file examples</li>
-<li>include-path behavior</li>
-<li>external fixture snapshots</li>
-<li>deterministic <code>.i</code> inputs</li>
-</ul>
-<h2 id="filtering-larger-fixture-runs"><a class="header" href="#filtering-larger-fixture-runs">Filtering larger fixture runs</a></h2>
-<p>The full-app runner supports environment filters:</p>
-<pre><code class="language-sh">FULL_APP_FILTER=musl/stdint make test
-FULL_APP_TAG=synthetic make test
+<p>Optional mode reports missing compilers or headers as skips. Required mode
+turns the same missing prerequisite into a failure. <code>make verify</code> uses required
+mode and requires a clean worktree.</p>
+<h2 id="current-test-layout"><a class="header" href="#current-test-layout">Current test layout</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Path</th><th>Purpose</th></tr>
+</thead>
+<tbody>
+<tr><td><code>src/contract/tests.rs</code></td><td>Checked schema, canonical codec, IDs, validation, completeness, and embedded corpus</td></tr>
+<tr><td><code>src/tests/scan_contract.rs</code></td><td>Explicit scan configuration, deterministic lowering, relocation, recovery, and adversarial attributes</td></tr>
+<tr><td><code>src/tests/parse_api.rs</code></td><td>Public fragment and translation-unit parser APIs</td></tr>
+<tr><td><code>src/tests/reftests.rs</code></td><td>Parser/printer fixtures under <code>test/reftests/</code></td></tr>
+<tr><td><code>src/tests/full_apps.rs</code></td><td>Manifest-driven parser/driver fixtures under <code>test/full_apps/</code></td></tr>
+<tr><td><code>src/tests/external_tools.rs</code></td><td>Compiler- and system-header-dependent probes</td></tr>
+</tbody>
+</table>
+</div>
+<p>The contract extractor is crate-private. Test it through <code>scan_headers</code> unless a
+deliberately malformed AST is required to prove that an internal lowering
+branch diagnoses loss rather than silently dropping a node.</p>
+<h2 id="reference-test-updates"><a class="header" href="#reference-test-updates">Reference-test updates</a></h2>
+<p>The reftest harness supports intentional printer updates:</p>
+<pre><code class="language-sh">TEST_UPDATE=1 make test
 </code></pre>
-<p>These are useful when debugging one fixture family instead of running the whole corpus.</p>
-<h2 id="current-workspace-note"><a class="header" href="#current-workspace-note">Current workspace note</a></h2>
-<p>The test harness and README describe <code>test/full_apps</code>, but that directory is not present in this
-workspace snapshot. The book documents the supported format because the code and README do.</p>
-<h2 id="extraction-tests"><a class="header" href="#extraction-tests">Extraction tests</a></h2>
-<p><code>src/tests/extraction_fixtures.rs</code> contains fixture-based tests for the extraction pipeline:
-typical C patterns (stdio-style, nested structs, typedef chains, function pointers, etc.).</p>
-<p><code>src/extract/mod.rs</code> also contains unit tests for each declaration family.</p>
-<h2 id="hostile-header-tests"><a class="header" href="#hostile-header-tests">Hostile header tests</a></h2>
-<p><code>src/tests/hostile_headers.rs</code> covers edge-case and historically problematic C declarations:
-deep pointer nesting, anonymous structs/enums, specifier ordering variations, bitfield-only
-structs, extreme enum values, forward-then-define patterns, etc.</p>
-<h2 id="recovery-tests"><a class="header" href="#recovery-tests">Recovery tests</a></h2>
-<p><code>src/tests/recovery.rs</code> tests graceful handling of broken, incomplete, or unusual input.
-Uses both strict parsing (error expected) and resilient parsing (recovery expected).</p>
-<h2 id="contract-tests-1"><a class="header" href="#contract-tests-1">Contract tests</a></h2>
-<p><code>src/tests/contract.rs</code> and <code>src/tests/consumability.rs</code> verify that the <code>SourcePackage</code>
-contract is sufficient for downstream consumers. These tests cover iteration patterns, type
-navigation, serialization, filtering, merging, and programmatic construction.</p>
-<h2 id="differential-tests"><a class="header" href="#differential-tests">Differential tests</a></h2>
-<p><code>src/tests/differential.rs</code> documents the known differences between parc extraction and
-bic extraction, ensuring behavioral equivalence on standard declarations and explicitly
-documenting intentional divergences (pointer model, no ABI fields, typedef chain
-preservation).</p>
-<h2 id="multi-file-scan-tests"><a class="header" href="#multi-file-scan-tests">Multi-file scan tests</a></h2>
-<p><code>src/tests/scan_multifile.rs</code> covers multi-header scanning scenarios: include chains,
-multiple entry headers, cross-file struct references, conditional compilation, include
-guards, include directory resolution, and metadata population.</p>
-<h2 id="adding-new-tests"><a class="header" href="#adding-new-tests">Adding new tests</a></h2>
-<p>A practical progression is:</p>
+<p>Review every rewritten expectation. This mode is for deliberate AST/printer
+changes, not for accepting unexplained diffs.</p>
+<h2 id="adding-coverage"><a class="header" href="#adding-coverage">Adding coverage</a></h2>
 <ol>
-<li>Add a <code>parse_api</code> unit test for the exact regression</li>
-<li>Add a reftest if you need a stable printed-tree expectation</li>
-<li>Add an extraction test if the issue is about declaration modeling</li>
-<li>Add a scan test if preprocessing or multi-file behavior matters</li>
-<li>Add a full-app fixture if the case needs a full filesystem layout</li>
+<li>Add a parser API test for a grammar regression.</li>
+<li>Add a reftest when the printed AST shape is part of the behavior.</li>
+<li>Add a scan-contract test when source semantics, provenance, diagnostics, or
+completeness are involved.</li>
+<li>Add a full-app or system test only when a filesystem/compiler surface is
+essential.</li>
 </ol>
-<h2 id="cross-crate-integration-proof"><a class="header" href="#cross-crate-integration-proof">Cross-crate integration proof</a></h2>
-<p><code>parc</code> library tests should not import <code>linc</code> or <code>gerc</code>.</p>
-<p>Cross-crate proof belongs in:</p>
-<ul>
-<li><code>linc</code> tests/examples that ingest serialized or translated <code>parc</code> artifacts</li>
-<li><code>gerc</code> tests/examples that ingest translated source artifacts</li>
-<li>external harnesses that exercise the full toolchain</li>
-</ul>
-<p>That keeps <code>parc</code>’s own test suite focused on source meaning while still
-proving the larger pipeline elsewhere.</p>
-<h2 id="what-supported-means"><a class="header" href="#what-supported-means">What “supported” means</a></h2>
-<p>For <code>parc</code>, support means:</p>
-<ul>
-<li>the syntax path is covered by parser-facing tests</li>
-<li>the extracted source meaning is covered by <code>SourcePackage</code>-level tests</li>
-<li>the relevant limitations are documented honestly when behavior is partial or
-conservative</li>
-</ul>
-<p>It does not mean:</p>
-<ul>
-<li>every downstream consumer will accept the artifact unchanged</li>
-<li>every hostile system header already has perfect preprocessing coverage</li>
-<li>every parser-internal helper is part of the public contract</li>
-</ul>
+<p>Every <code>Partial</code> or <code>Unsupported</code> support reason must have a diagnostic with the
+same code and message. Every diagnostic that forces partial or rejected
+completeness must appear exactly once in the package’s canonical completeness
+reasons.</p>
+<h2 id="cross-crate-proof"><a class="header" href="#cross-crate-proof">Cross-crate proof</a></h2>
+<p><code>parc</code> library tests do not import <code>linc</code> or <code>gerc</code>. Downstream consumption
+belongs in those repositories or an external integration harness, using the
+canonical serialized <code>SourcePackage</code> boundary.</p>
 
                     </main>
 
@@ -399,11 +294,11 @@ conservative</li>
 
         <script src="elasticlunr-ef4e11c1.min.js"></script>
         <script src="mark-09e88c2c.min.js"></script>
-        <script src="searcher-c2a407aa.js"></script>
+        <script src="searcher-09f2665d.js"></script>
 
         <script src="clipboard-1626706a.min.js"></script>
         <script src="highlight-abc7f01d.js"></script>
-        <script src="book-a0b12cfe.js"></script>
+        <script src="book-c22b7243.js"></script>
 
         <!-- Custom JS scripts -->
 

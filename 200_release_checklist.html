@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Release Checklist - PARC Reference</title>
+        <title>Release Policy and Checklist - PARC Reference</title>
 
 
         <!-- Custom HTML head -->
@@ -15,8 +15,8 @@
         <link rel="icon" href="favicon-de23e50b.svg">
         <link rel="shortcut icon" href="favicon-8114d1fc.png">
         <link rel="stylesheet" href="css/variables-8adf115d.css">
-        <link rel="stylesheet" href="css/general-2459343d.css">
-        <link rel="stylesheet" href="css/chrome-ae938929.css">
+        <link rel="stylesheet" href="css/general-0392ca55.css">
+        <link rel="stylesheet" href="css/chrome-fc474251.css">
         <link rel="stylesheet" href="css/print-9e4910d8.css" media="print">
 
         <!-- Fonts -->
@@ -35,10 +35,10 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-b1c210d5.js";
+            window.path_to_searchindex_js = "searchindex-05c88c01.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-6cd1cca1.js"></script>
+        <script src="toc-aee9c670.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -174,73 +174,64 @@
 
                 <div id="mdbook-content" class="content">
                     <main>
-                        <h1 id="release-checklist"><a class="header" href="#release-checklist">Release Checklist</a></h1>
-<p>This chapter is a pragmatic checklist for documentation and parser changes before a release.</p>
-<p>The important release posture is architectural:</p>
+                        <h1 id="release-policy-and-checklist"><a class="header" href="#release-policy-and-checklist">Release Policy and Checklist</a></h1>
+<p>The root <code>RELEASE.md</code>, which is included in the package archive, is the
+normative distribution policy. This chapter summarizes the repository checks.</p>
+<h2 id="identity-and-compatibility"><a class="header" href="#identity-and-compatibility">Identity and compatibility</a></h2>
+<p>The current identities are:</p>
 <ul>
-<li><code>parc</code> releases source/frontend behavior</li>
-<li>it does not release binary or Rust-generation policy</li>
-<li>the tested <code>SourcePackage</code> contract matters more than parser-internal churn</li>
+<li>package <code>follang-parc</code> 0.16.0, imported as <code>parc</code>;</li>
+<li>MSRV Rust 1.89;</li>
+<li>source schema <code>follang.parc.source-package</code> version 2;</li>
+<li>ID algorithm version 1;</li>
+<li>H2 implementation baseline
+<code>9585c5977e73795f71d7844bb179f1a2ba613c83</code>;</li>
+<li>no PARC/LINC/GERC dependency, because PARC is the first sibling released.</li>
 </ul>
-<h2 id="parser-changes"><a class="header" href="#parser-changes">Parser changes</a></h2>
-<p>Before releasing parser changes:</p>
+<p>Registry publication is disabled. The project does not claim crates.io name
+ownership or availability. Distribution uses an exact Git tag and its tested
+self-contained Cargo archive.</p>
+<p>Rust API/behavior changes follow SemVer. Before 1.0, breaking changes require a
+minor bump. Frozen schema v2 is never changed in place: incompatible artifact
+changes require a new schema, corpus, and breaking SemVer bump. ID
+normalization/domain/input changes require a new ID algorithm, golden vectors,
+schema, and breaking SemVer bump because IDs are serialized. A patch release
+does not raise the MSRV; detailed pre/post-1.0 rules are in <code>RELEASE.md</code>.</p>
+<h2 id="change-review"><a class="header" href="#change-review">Change review</a></h2>
+<p>Before a release candidate:</p>
 <ol>
-<li>confirm the smallest reproducer has a test</li>
-<li>confirm the intended flavor coverage is tested</li>
-<li>confirm the AST shape change is deliberate</li>
-<li>confirm visitor and printer behavior still make sense</li>
+<li>put parser changes behind the smallest relevant API/reftest fixture;</li>
+<li>cover contract meaning, canonical bytes, IDs, validation, or completeness in
+contract tests and the frozen corpus as applicable;</li>
+<li>keep visitor/printer and book descriptions aligned with intentional AST/API
+changes;</li>
+<li>retain structured fail-closed diagnostics for unsupported source behavior;</li>
+<li>confirm the book still limits certification to the H2 source frontend.</li>
 </ol>
-<h2 id="book-changes"><a class="header" href="#book-changes">Book changes</a></h2>
-<p>Before releasing documentation changes:</p>
-<ol>
-<li>confirm the affected public behavior is described in the book</li>
-<li>confirm unsupported or out-of-scope cases are still documented honestly</li>
-<li>confirm examples still match the actual public API names</li>
-</ol>
-<h2 id="error-surface-changes"><a class="header" href="#error-surface-changes">Error-surface changes</a></h2>
-<p>Before releasing changes around errors:</p>
-<ol>
-<li>confirm structured fields still provide the needed information</li>
-<li>avoid treating formatted strings as the real contract</li>
-<li>update the error-surface chapter if the practical behavior changed</li>
-</ol>
-<h2 id="workflow-changes"><a class="header" href="#workflow-changes">Workflow changes</a></h2>
-<p>Before releasing changes to the normal integration path:</p>
-<ol>
-<li>update the workflow chapter</li>
-<li>update the API contract chapter if the preferred boundary changed</li>
-<li>update stable-usage guidance if downstream posture should change</li>
-</ol>
-<h2 id="artifact-contract-changes"><a class="header" href="#artifact-contract-changes">Artifact contract changes</a></h2>
-<p>Before releasing a <code>SourcePackage</code> shape change:</p>
-<ol>
-<li>confirm the changed field meaning is covered by contract-level tests</li>
-<li>confirm the consuming workflow examples still describe artifact boundaries</li>
-<li>confirm cross-crate composition is still described as tests/examples/harness
-work, not library coupling</li>
-</ol>
-<h2 id="release-gate"><a class="header" href="#release-gate">Release gate</a></h2>
-<p><code>parc</code> is ready to release only when:</p>
+<h2 id="candidate-gate"><a class="header" href="#candidate-gate">Candidate gate</a></h2>
+<p>The operator must first fetch and review the tracked upstream and tags. On a
+clean branch whose <code>HEAD</code> exactly equals its tracked upstream, run:</p>
+<pre><code class="language-sh">make release-check
+</code></pre>
+<p>The target refuses detached, dirty, untracked, non-upstream, already-tagged, or
+registry-publishable state, then runs the full <code>make verify</code> gate. It is
+non-mutating: it does not fetch, edit a version, commit, tag, push, upload, or
+publish.</p>
+<p>The full gate proves:</p>
 <ul>
-<li><code>make build</code> passes</li>
-<li><code>make test</code> passes</li>
-<li>the canonical hardening surfaces are still green
-<ul>
-<li>vendored musl <code>stdint</code></li>
-<li>vendored zlib</li>
-<li>vendored libpng scan</li>
-<li>OpenSSL public wrapper extraction</li>
-<li>libcurl public wrapper extraction</li>
-<li>combined Linux event-loop wrapper extraction</li>
+<li>formatting, Clippy, feature combinations, repository tests, and doctests;</li>
+<li>frozen schema-v2 corpus and scan preservation;</li>
+<li>required compiler-dependent evidence with no zero-test filter;</li>
+<li>candidate archive default tests/doctests and a clean packaged consumer;</li>
+<li>mdBook and Rust API documentation;</li>
+<li>no worktree change during verification.</li>
 </ul>
-</li>
-<li>deterministic repeated extraction still holds on the canonical large surfaces</li>
-<li>the book still teaches <code>parc</code> as the source-meaning crate</li>
-<li>unsupported or partial source behavior is still documented honestly</li>
-</ul>
-<h2 id="final-practical-rule"><a class="header" href="#final-practical-rule">Final practical rule</a></h2>
-<p>If a change would force a downstream PARC consumer to rethink how it parses, traverses, or reports
-on source, the book should say so explicitly in the same change.</p>
+<h2 id="dependency-order"><a class="header" href="#dependency-order">Dependency order</a></h2>
+<p>Record the full PARC tag commit, package version, schema version, and ID
+algorithm version before downstream tagging. Then release/tag LINC against that
+exact PARC state, GERC against both exact upstream states, and finally update
+FOL’s lock. Never tag a downstream crate against uncommitted or local-only
+upstream state.</p>
 
                     </main>
 
@@ -286,11 +277,11 @@ on source, the book should say so explicitly in the same change.</p>
 
         <script src="elasticlunr-ef4e11c1.min.js"></script>
         <script src="mark-09e88c2c.min.js"></script>
-        <script src="searcher-c2a407aa.js"></script>
+        <script src="searcher-09f2665d.js"></script>
 
         <script src="clipboard-1626706a.min.js"></script>
         <script src="highlight-abc7f01d.js"></script>
-        <script src="book-a0b12cfe.js"></script>
+        <script src="book-c22b7243.js"></script>
 
         <!-- Custom JS scripts -->
 
