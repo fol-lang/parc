@@ -1245,6 +1245,21 @@ fn external_identity_records_exact_tool_arguments_sysroot_environment_and_inputs
 fn certified_builtin_and_gcc_clang_external_scans_agree_or_report_exact_differences() {
     const TEST_NAME: &str =
         "certified_builtin_and_gcc_clang_external_scans_agree_or_report_exact_differences";
+    assert_eq!(
+        certified_requested_target("x86_64-unknown-linux-gnu"),
+        Some("x86_64-unknown-linux-gnu")
+    );
+    assert_eq!(
+        certified_requested_target("x86_64-linux-gnu"),
+        Some("x86_64-unknown-linux-gnu")
+    );
+    for unsupported in [
+        "x86_64-pc-linux-gnu",
+        "amd64-linux-gnu",
+        "aarch64-linux-gnu",
+    ] {
+        assert_eq!(certified_requested_target(unsupported), None);
+    }
     let gcc = find_system_executable("gcc");
     let clang = find_system_executable("clang");
     if !crate::tests::system_support::begin_system_test(
@@ -1515,14 +1530,13 @@ fn system_compiler_target(executable: &std::path::Path, family: CompilerFamily) 
         .output()
         .expect("query compiler target");
     assert!(target_output.status.success(), "compiler -dumpmachine");
-    let triple = String::from_utf8(target_output.stdout)
+    let reported_triple = String::from_utf8(target_output.stdout)
         .expect("compiler target UTF-8")
         .trim()
         .to_owned();
-    assert!(
-        triple.starts_with("x86_64-") && triple.contains("-linux-"),
-        "certified differential target is x86_64 Linux, found {triple}"
-    );
+    let requested_triple = certified_requested_target(&reported_triple).unwrap_or_else(|| {
+        panic!("certified differential target is x86_64 Linux GNU, found {reported_triple}")
+    });
     let version_output = std::process::Command::new(executable)
         .arg("--version")
         .output()
@@ -1537,11 +1551,19 @@ fn system_compiler_target(executable: &std::path::Path, family: CompilerFamily) 
         format!("toolchains/{}/bin/cc", family_name(family)),
         executable_fingerprint,
         ContentFingerprint::from_content(&version_output.stdout),
-        &triple,
+        &reported_triple,
         "system",
     )
     .expect("system compiler identity");
-    target_with_compiler(&triple, compiler)
+    target_with_compiler(requested_triple, compiler)
+}
+
+#[cfg(feature = "system-tests")]
+fn certified_requested_target(reported: &str) -> Option<&'static str> {
+    match reported {
+        "x86_64-unknown-linux-gnu" | "x86_64-linux-gnu" => Some("x86_64-unknown-linux-gnu"),
+        _ => None,
+    }
 }
 
 #[cfg(feature = "system-tests")]

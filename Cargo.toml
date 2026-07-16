@@ -16,9 +16,9 @@ include = [
     "/README.md",
     "/RELEASE.md",
 ]
-documentation = "https://follang.github.io/lang-c/"
-homepage = "https://github.com/follang/lang-c"
-repository = "https://github.com/follang/lang-c"
+documentation = "https://fol-lang.github.io/parc/"
+homepage = "https://github.com/fol-lang/parc"
+repository = "https://github.com/fol-lang/parc"
 keywords = [ "ast", "c", "parser", "ffi", "preprocessing" ]
 categories = [ "parser-implementations" ]
 
