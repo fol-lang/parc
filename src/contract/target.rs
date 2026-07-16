@@ -1396,12 +1396,21 @@ fn validate_compiler_identity(
             detail: error.to_string(),
         });
     }
-    if compiler.reported_target() != requested_target {
+    if !compiler_reported_target_matches(compiler.reported_target(), requested_target) {
         violations.push(TargetViolation::CompilerReportedTargetMismatch {
             reported: compiler.reported_target().to_owned(),
             requested: requested_target.to_owned(),
         });
     }
+}
+
+/// Preserve the compiler's actual reported identity while accepting the one
+/// GNU x86-64 spelling pair whose omitted `unknown` vendor is semantically
+/// identical to the canonical contract triple.  This is intentionally
+/// one-way and closed; no general target normalization or guessing occurs.
+fn compiler_reported_target_matches(reported: &str, requested: &str) -> bool {
+    reported == requested
+        || (reported == "x86_64-linux-gnu" && requested == "x86_64-unknown-linux-gnu")
 }
 
 struct ParsedTargetTriple<'a> {
@@ -2037,6 +2046,39 @@ mod tests {
         deduplicated.abi_flags.pop();
         let deduplicated = TargetSpec::try_new(deduplicated).expect("valid target");
         assert_ne!(original.fingerprint(), deduplicated.fingerprint());
+    }
+
+    #[test]
+    fn canonical_x86_64_gnu_target_preserves_the_exact_known_compiler_alias() {
+        let canonical = TargetSpec::try_new(lp64_parts()).expect("canonical target");
+        let mut alias_parts = lp64_parts();
+        alias_parts.compiler = compiler("x86_64-linux-gnu");
+        let alias = TargetSpec::try_new(alias_parts).expect("known GNU alias");
+
+        assert_eq!(alias.triple(), "x86_64-unknown-linux-gnu");
+        assert_eq!(alias.compiler().reported_target(), "x86_64-linux-gnu");
+        assert_ne!(alias.fingerprint(), canonical.fingerprint());
+    }
+
+    #[test]
+    fn compiler_target_alias_policy_rejects_reverse_and_unknown_mismatches() {
+        assert!(!compiler_reported_target_matches(
+            "x86_64-unknown-linux-gnu",
+            "x86_64-linux-gnu"
+        ));
+        for reported in [
+            "amd64-linux-gnu",
+            "x86_64-pc-linux-gnu",
+            "aarch64-linux-gnu",
+        ] {
+            let mut parts = lp64_parts();
+            parts.compiler = compiler(reported);
+            let error = TargetSpec::try_new(parts).expect_err("unknown target mismatch");
+            assert!(error.violations().iter().any(|violation| matches!(
+                violation,
+                TargetViolation::CompilerReportedTargetMismatch { .. }
+            )));
+        }
     }
 
     #[test]
