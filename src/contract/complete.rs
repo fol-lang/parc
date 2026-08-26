@@ -6,8 +6,8 @@ use thiserror::Error;
 
 use super::{
     ArrayBound, AttributeDisposition, CType, CTypeKind, CallingConvention, Completeness,
-    CompletenessReason, DeclarationId, Selection, SourceDeclaration, SourceDeclarationKind,
-    SourcePackage, SupportStatus,
+    CompletenessReason, DeclarationId, DiagnosticCompletenessImpact, DiagnosticStage, Selection,
+    SourceDeclaration, SourceDeclarationKind, SourcePackage, SupportStatus,
 };
 
 /// A package plus the exact selected transitive declaration closure for which
@@ -130,22 +130,51 @@ impl SourcePackage {
                     reasons: reasons.clone(),
                 });
             }
-            // A *partial* package is one where some declarations could not be
-            // modelled. Which ones matters: refusing the whole package refuses
-            // a header for constructs in declarations the caller never asked
-            // for, and every real C library has some. `sqlite3.h` declares
-            // three `va_list` routines; `zlib.h` picks integer types with an
-            // unsigned comparison in a `#if`. A caller wanting `crc32` was
-            // told the header was unusable.
+            // A *partial* package is judged by how far its reasons reach, and
+            // only the ones that reach the whole package block it.
             //
-            // The closure below is the authority instead, and it is a stricter
+            // A diagnostic that names a declaration scopes to that declaration.
+            // The closure walk below is the authority for those, and a stricter
             // one than this check was: a selected declaration that is
-            // unsupported is rejected by `reject_status`, a needed declaration
-            // destroyed by a parse error never enters `declarations` and comes
-            // back as `MissingDeclaration`, and a caller naming a symbol that
-            // did not survive gets no root at all. What stops being fatal is
-            // precisely the part that was never about the selection.
-            Completeness::Partial { .. } => {}
+            // unsupported is refused by `reject_status`, one destroyed before
+            // it entered `declarations` returns as `MissingDeclaration`, and a
+            // caller naming a symbol that did not survive gets no root at all.
+            //
+            // Parser recovery names none, but only because the declaration it
+            // destroyed was never built to be named; its reach is still that
+            // one declaration, and `MissingDeclaration` is the exact check for
+            // it. Every real C header has a construct this parser cannot read
+            // -- `sqlite3.h` declares three `va_list` routines -- and refusing
+            // the package refuses a header over declarations the caller never
+            // asked for.
+            //
+            // What is left names no declaration because it has none to name.
+            // Preprocessing without exact include and macro provenance
+            // (`PARC-P0001`) does not impugn one declaration; it impugns the
+            // source text all of them were read from, and that text is what
+            // this package's fingerprint binds downstream evidence to.
+            Completeness::Partial { .. } => {
+                let package_scoped: Vec<_> = self
+                    .diagnostics()
+                    .iter()
+                    .filter(|diagnostic| {
+                        diagnostic.completeness_impact
+                            != DiagnosticCompletenessImpact::Informational
+                            && diagnostic.declaration.is_none()
+                            && diagnostic.stage != DiagnosticStage::Recovery
+                    })
+                    .map(|diagnostic| CompletenessReason {
+                        code: diagnostic.code.clone(),
+                        message: diagnostic.message.clone(),
+                        range: diagnostic.range,
+                    })
+                    .collect();
+                if !package_scoped.is_empty() {
+                    blockers.push(CompletionBlocker::PackageIncomplete {
+                        reasons: package_scoped,
+                    });
+                }
+            }
         }
 
         let roots: Vec<_> = match selected {

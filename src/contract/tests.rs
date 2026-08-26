@@ -748,6 +748,67 @@ fn partial_package() -> SourcePackage {
     SourcePackage::try_new(fixture_input(true)).unwrap()
 }
 
+/// A partial package whose sole reason is the supplied unnamed diagnostic.
+fn partial_package_from(code: &str, stage: DiagnosticStage) -> SourcePackage {
+    let mut input = fixture_input(false);
+    let code = DiagnosticCode::new(code).unwrap();
+    let message = "fixture reason".to_owned();
+    input.diagnostics = vec![SourceDiagnostic {
+        code: code.clone(),
+        stage,
+        severity: Severity::Error,
+        completeness_impact: DiagnosticCompletenessImpact::ForcesPartial,
+        message: message.clone(),
+        range: None,
+        related: Vec::new(),
+        declaration: None,
+        target: input.target.fingerprint(),
+    }];
+    input.completeness = Completeness::Partial {
+        reasons: vec![CompletenessReason {
+            code,
+            message,
+            range: None,
+        }],
+    };
+    SourcePackage::try_new(input).unwrap()
+}
+
+/// A reason that names no declaration and did not destroy one blocks the package.
+///
+/// `PARC-P0001` says the source text was preprocessed without exact include and
+/// macro provenance. That is not a fact about one declaration; it is a fact
+/// about the text every declaration was read from, and this package's
+/// fingerprint is what binds that text to downstream evidence.
+#[test]
+fn a_package_scoped_reason_still_refuses_every_selection() {
+    let open = named_id(EntityNamespace::Ordinary, "parc_open");
+    let error = partial_package_from("PARC-P0001", DiagnosticStage::Preprocess)
+        .into_complete(&Selection::only([open]).unwrap())
+        .unwrap_err();
+    assert!(
+        error.blockers().iter().any(|blocker| {
+            matches!(blocker, CompletionBlocker::PackageIncomplete { reasons }
+                if reasons.iter().any(|reason| reason.code.as_str() == "PARC-P0001"))
+        }),
+        "provenance reaches the whole package"
+    );
+}
+
+/// Parser recovery names no declaration only because it destroyed one.
+///
+/// Its reach is still that declaration, and the closure walk reports a needed
+/// one as `MissingDeclaration`. A selection that resolves without it is sound.
+#[test]
+fn a_recovery_reason_scopes_to_the_declaration_it_destroyed() {
+    let open = named_id(EntityNamespace::Ordinary, "parc_open");
+    partial_package_from("PARC-P0002", DiagnosticStage::Recovery)
+        .into_complete(&Selection::only([open]).unwrap())
+        .unwrap_or_else(|error| {
+            panic!("a selection that resolves is unaffected by recovery: {error:?}")
+        });
+}
+
 #[test]
 fn codec_round_trip_is_byte_canonical() {
     for package in [complete_package(), partial_package()] {
