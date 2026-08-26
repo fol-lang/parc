@@ -312,17 +312,28 @@ fn first_ident(tokens: &[Token]) -> Option<String> {
     None
 }
 
+/// Joins a directive's tokens, with each comment standing for the one space it
+/// is replaced by.
+///
+/// Comments are whitespace, as `TokenKind::LineComment` and
+/// `TokenKind::BlockComment` say. Keeping their text made a trailing comment
+/// part of the header name: `#include <stdarg.h> /* why */` asked for a file
+/// spelled `<stdarg.h> /* why */`, which no search root has. `sqlite3.h`
+/// spells its `<stdarg.h>` exactly that way.
 fn collect_text(tokens: &[Token]) -> String {
-    let mut s = String::new();
-    let mut started = false;
-    for t in tokens {
-        if !started && t.kind == TokenKind::Whitespace {
+    let mut text = String::new();
+    for token in tokens {
+        let piece = match token.kind {
+            TokenKind::LineComment | TokenKind::BlockComment => " ",
+            _ => token.text.as_str(),
+        };
+        if text.is_empty() && piece.trim().is_empty() {
             continue;
         }
-        started = true;
-        s.push_str(&t.text);
+        text.push_str(piece);
     }
-    s
+    text.truncate(text.trim_end().len());
+    text
 }
 
 fn strip_whitespace_edges(tokens: &[Token]) -> Vec<Token> {
@@ -406,6 +417,36 @@ mod tests {
                 assert!(!system);
             }
             other => panic!("expected Include, got {:?}", other),
+        }
+    }
+
+    /// A comment after the header name is not part of the header name.
+    ///
+    /// `sqlite3.h` line 35 is `#include <stdarg.h>     /* Needed for the
+    /// definition of va_list */`, and reading the comment as part of the name
+    /// made the whole header unbindable.
+    #[test]
+    fn test_include_ignores_a_trailing_comment() {
+        for source in [
+            "#include <stdarg.h> /* Needed for the definition of va_list */\n",
+            "#include <stdarg.h>     // why\n",
+            "#include /* here */ <stdarg.h>\n",
+        ] {
+            match directive_from(source) {
+                Directive::Include { path, system } => {
+                    assert_eq!(path, "stdarg.h", "{source:?}");
+                    assert!(system, "{source:?}");
+                }
+                other => panic!("expected Include for {source:?}, got {other:?}"),
+            }
+        }
+
+        match directive_from("#include \"local.h\" /* and a comment */\n") {
+            Directive::Include { path, system } => {
+                assert_eq!(path, "local.h");
+                assert!(!system);
+            }
+            other => panic!("expected Include, got {other:?}"),
         }
     }
 
