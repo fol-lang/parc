@@ -121,11 +121,31 @@ impl SourcePackage {
         let mut blockers = Vec::new();
         match self.completeness() {
             Completeness::Complete => {}
-            Completeness::Partial { reasons } | Completeness::Rejected { reasons } => {
+            // A rejected package is not a package. `ForcesRejected` is reserved
+            // for failures of the scan itself -- the external preprocessor
+            // timing out, its output exceeding the cap -- after which nothing
+            // that was read can be trusted, whatever was selected.
+            Completeness::Rejected { reasons } => {
                 blockers.push(CompletionBlocker::PackageIncomplete {
                     reasons: reasons.clone(),
                 });
             }
+            // A *partial* package is one where some declarations could not be
+            // modelled. Which ones matters: refusing the whole package refuses
+            // a header for constructs in declarations the caller never asked
+            // for, and every real C library has some. `sqlite3.h` declares
+            // three `va_list` routines; `zlib.h` picks integer types with an
+            // unsigned comparison in a `#if`. A caller wanting `crc32` was
+            // told the header was unusable.
+            //
+            // The closure below is the authority instead, and it is a stricter
+            // one than this check was: a selected declaration that is
+            // unsupported is rejected by `reject_status`, a needed declaration
+            // destroyed by a parse error never enters `declarations` and comes
+            // back as `MissingDeclaration`, and a caller naming a symbol that
+            // did not survive gets no root at all. What stops being fatal is
+            // precisely the part that was never about the selection.
+            Completeness::Partial { .. } => {}
         }
 
         let roots: Vec<_> = match selected {

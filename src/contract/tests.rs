@@ -985,15 +985,41 @@ fn opaque_selection_rejects_non_record_roots() {
     ));
 }
 
+/// A partial package cannot be laundered into a complete one by *selecting the
+/// unsupported declaration*, which is the forgery that matters.
+///
+/// This asserted something broader: that a partial package could not be
+/// completed under **any** selection, including `all_supported`, which by
+/// definition excludes what is unsupported. That is stricter than the type
+/// promises -- `CompleteSourcePackage` is "the exact *selected* transitive
+/// declaration closure for which completeness and support were proved" -- and
+/// it made a whole header unusable for a diagnostic in a declaration nobody
+/// asked for. `sqlite3.h` declares three `va_list` routines; a caller wanting
+/// `sqlite3_open` was told the header was unusable.
 #[test]
-fn partial_package_cannot_be_forged_into_complete() {
+fn a_selected_unsupported_declaration_cannot_be_forged_into_complete() {
+    let extended = named_id(EntityNamespace::Ordinary, "parc_extended");
     let error = partial_package()
-        .into_complete(&Selection::all_supported())
+        .into_complete(&Selection::only([extended]).unwrap())
         .unwrap_err();
-    assert!(error
-        .blockers()
-        .iter()
-        .any(|blocker| matches!(blocker, CompletionBlocker::PackageIncomplete { .. })));
+    assert!(
+        !error.blockers().is_empty(),
+        "selecting an unsupported declaration must be refused"
+    );
+}
+
+/// Selecting only what is supported succeeds, even beside a diagnostic.
+///
+/// The other half of the same rule, and the one real headers depend on: a
+/// construct PARC cannot model poisons itself, not the package.
+#[test]
+fn a_partial_package_completes_for_a_selection_that_avoids_the_problem() {
+    let open = named_id(EntityNamespace::Ordinary, "parc_open");
+    partial_package()
+        .into_complete(&Selection::only([open]).unwrap())
+        .unwrap_or_else(|error| {
+            panic!("a supported selection should complete beside a diagnostic: {error:?}")
+        });
 }
 
 #[test]
