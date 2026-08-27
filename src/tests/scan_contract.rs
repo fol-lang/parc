@@ -565,7 +565,6 @@ fn unsupported_directives_pragmas_line_markers_and_midline_hash_fail_closed() {
     for (label, source, code, rejected) in [
         ("missing", "#include \"absent.h\"\n", "PARC-P2100", false),
         ("unknown", "#frobnicate value\n", "PARC-P2101", false),
-        ("next", "#include_next <stdint.h>\n", "PARC-P2102", false),
         ("pragma", "#pragma vendor_magic\n", "PARC-P2103", false),
         ("line", "#line 42 \"other.h\"\n", "PARC-P2104", false),
         ("pack", "#pragma pack(push, 1)\n", "PARC-E2104", true),
@@ -1795,4 +1794,60 @@ fn target_with_compiler_and_sysroot(
         abi_flags: vec![NormalizedCompilerArg::try_new("-m64").expect("ABI argument")],
     })
     .expect("target")
+}
+
+/// `#include_next` resumes after the root the including file came from.
+///
+/// This is how a compiler header hands off to the libc header of the same
+/// name: GCC ships `stdint.h`, which ends with `#include_next <stdint.h>` and
+/// must find glibc's rather than itself. Without it every header reaching
+/// `stdint.h` was unreadable, which is most of them.
+#[test]
+fn include_next_resumes_after_the_root_it_came_from() {
+    let fixture = Fixture::new("include-next", "#include <chain.h>\nint entry_value;\n");
+    // Two roots, each with a `chain.h`. The first defers to the second.
+    let first = fixture.write(
+        "first/chain.h",
+        "#ifndef FIRST_H\n#define FIRST_H\nint from_first;\n#include_next <chain.h>\n#endif\n",
+    );
+    let second = fixture.write("second/chain.h", "int from_second;\n");
+    let config = ScanConfig::new(
+        test_target(),
+        PathMapping::try_new([
+            PathMappingRule::try_new(&fixture.root, "fixture").expect("fixture rule")
+        ])
+        .expect("mapping"),
+        PreprocessorMode::Builtin,
+    )
+    .expect("scan config")
+    .entry_header(&fixture.header)
+    .system_include_dir(first.parent().expect("first root"))
+    .system_include_dir(second.parent().expect("second root"));
+
+    let package = scan_headers(&config)
+        .expect("include_next scan")
+        .into_package();
+
+    // Both were read: the first stopped at its own guard and handed on.
+    for name in ["entry_value", "from_first", "from_second"] {
+        assert!(
+            package.declarations().iter().any(|declaration| declaration
+                .name
+                .as_ref()
+                .is_some_and(|n| n.original == name)),
+            "{name} should have been read; got {:?}",
+            package
+                .declarations()
+                .iter()
+                .filter_map(|d| d.name.as_ref().map(|n| n.original.clone()))
+                .collect::<Vec<_>>()
+        );
+    }
+    assert!(
+        !package
+            .diagnostics()
+            .iter()
+            .any(|diagnostic| diagnostic.code.as_str() == "PARC-P2102"),
+        "#include_next is supported, so nothing should report it as unmodelled"
+    );
 }

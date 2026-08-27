@@ -12,8 +12,16 @@ pub enum Directive {
     },
     /// `#undef NAME`
     Undef { name: String },
-    /// `#include "path"` or `#include <path>`
-    Include { path: String, system: bool },
+    /// `#include "path"`, `#include <path>`, or `#include_next <path>`.
+    ///
+    /// `next` resumes the search *after* the root the including file came
+    /// from, which is how a compiler header chains to the libc one of the
+    /// same name: GCC ships `stdint.h` and hands off to glibc's.
+    Include {
+        path: String,
+        system: bool,
+        next: bool,
+    },
     /// `#if expr`
     If { tokens: Vec<Token> },
     /// `#ifdef NAME`
@@ -80,7 +88,9 @@ pub fn parse_directive(tokens: &[Token]) -> Directive {
     match name.as_str() {
         "define" => parse_define(rest),
         "undef" => parse_undef(rest),
-        "include" => parse_include(rest),
+        "include" => parse_include(rest, false),
+        // `#include_next` resumes after the root the including file came from.
+        "include_next" => parse_include(rest, true),
         "if" => Directive::If {
             tokens: strip_whitespace_edges(rest),
         },
@@ -198,24 +208,27 @@ fn parse_undef(tokens: &[Token]) -> Directive {
     }
 }
 
-fn parse_include(tokens: &[Token]) -> Directive {
+fn parse_include(tokens: &[Token], next: bool) -> Directive {
     let text = collect_text(tokens);
     let trimmed = text.trim();
     if trimmed.starts_with('<') && trimmed.ends_with('>') {
         Directive::Include {
             path: trimmed[1..trimmed.len() - 1].to_owned(),
             system: true,
+            next,
         }
     } else if trimmed.starts_with('"') && trimmed.ends_with('"') {
         Directive::Include {
             path: trimmed[1..trimmed.len() - 1].to_owned(),
             system: false,
+            next,
         }
     } else {
         // Macro-expanded include — return as-is
         Directive::Include {
             path: trimmed.to_owned(),
             system: false,
+            next,
         }
     }
 }
@@ -401,7 +414,7 @@ mod tests {
     #[test]
     fn test_include_system() {
         match directive_from("#include <stdio.h>\n") {
-            Directive::Include { path, system } => {
+            Directive::Include { path, system, .. } => {
                 assert_eq!(path, "stdio.h");
                 assert!(system);
             }
@@ -412,7 +425,7 @@ mod tests {
     #[test]
     fn test_include_local() {
         match directive_from("#include \"myheader.h\"\n") {
-            Directive::Include { path, system } => {
+            Directive::Include { path, system, .. } => {
                 assert_eq!(path, "myheader.h");
                 assert!(!system);
             }
@@ -433,7 +446,7 @@ mod tests {
             "#include /* here */ <stdarg.h>\n",
         ] {
             match directive_from(source) {
-                Directive::Include { path, system } => {
+                Directive::Include { path, system, .. } => {
                     assert_eq!(path, "stdarg.h", "{source:?}");
                     assert!(system, "{source:?}");
                 }
@@ -442,7 +455,7 @@ mod tests {
         }
 
         match directive_from("#include \"local.h\" /* and a comment */\n") {
-            Directive::Include { path, system } => {
+            Directive::Include { path, system, .. } => {
                 assert_eq!(path, "local.h");
                 assert!(!system);
             }

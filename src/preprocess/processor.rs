@@ -223,7 +223,7 @@ impl Processor {
                     Directive::Undef { name } => {
                         self.macros.undef(&name);
                     }
-                    Directive::Include { path, system } => {
+                    Directive::Include { path, system, .. } => {
                         // Try inline include resolution first
                         if let Some(inc_tokens) = include_handler(&path, system, &mut self.macros) {
                             output.tokens.extend(inc_tokens);

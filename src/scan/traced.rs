@@ -711,7 +711,7 @@ impl TracedProcessor<'_> {
                     Directive::Undef { name } => {
                         self.active_macros.remove(&name);
                     }
-                    Directive::Include { path, system } => {
+                    Directive::Include { path, system, next } => {
                         self.include_count = self.include_count.saturating_add(1);
                         if self.include_count > self.config.limits.max_include_count {
                             self.limit_issue(
@@ -731,7 +731,7 @@ impl TracedProcessor<'_> {
                             });
                             continue;
                         }
-                        match self.resolve_include(&loaded, &path, system)? {
+                        match self.resolve_include(&loaded, &path, system, next)? {
                             Some((included, search_root)) => {
                                 if let Some(root) = search_root {
                                     let content = self.files[&included.id].content;
@@ -805,17 +805,10 @@ impl TracedProcessor<'_> {
                         }
                     }
                     Directive::Unknown { name, .. } => {
-                        let (code, message) = if name == "include_next" {
-                            (
-                                "PARC-P2102",
-                                "#include_next search provenance is unsupported".to_owned(),
-                            )
-                        } else {
-                            (
-                                "PARC-P2101",
-                                format!("unknown active preprocessing directive: {name}"),
-                            )
-                        };
+                        let (code, message) = (
+                            "PARC-P2101",
+                            format!("unknown active preprocessing directive: {name}"),
+                        );
                         self.issues.push(TraceIssue {
                             code,
                             severity: Severity::Warning,
@@ -1321,19 +1314,47 @@ impl TracedProcessor<'_> {
         macros
     }
 
+    /// Which configured search root a file was found under, if any.
+    ///
+    /// Computed from the path rather than remembered on the file, because the
+    /// file cache is keyed by canonical path and a header is reached through
+    /// one root. A file with no root -- the entry header, or a builtin -- has
+    /// nothing to resume after.
+    fn search_root_index(&self, path: Option<&Path>) -> Option<usize> {
+        let path = path?;
+        self.search_roots
+            .iter()
+            .position(|(root, _, _)| path.starts_with(root))
+    }
+
     fn resolve_include(
         &mut self,
         including: &LoadedSource,
         name: &str,
         system: bool,
+        next: bool,
     ) -> Result<Option<(LoadedSource, Option<String>)>, ScanError> {
+        // `#include_next` resumes *after* the root the including file came
+        // from: that is how GCC's `stdint.h` hands off to glibc's of the same
+        // name instead of finding itself. A file that came from no configured
+        // root has nothing to resume after, and GCC treats that as an ordinary
+        // include, so this does too.
+        let resumed = if next {
+            self.search_root_index(including.physical_path.as_deref())
+        } else {
+            None
+        };
+        let resume = resumed.map_or(0, |index| index + 1);
+
         let mut candidates = Vec::<(PathBuf, SourceFileRole, Option<String>)>::new();
-        if !system {
+        // The including file's own directory is not searched by
+        // `#include_next`, which is a search-path directive by definition.
+        if !system && !next {
             if let Some(parent) = including.physical_path.as_deref().and_then(Path::parent) {
                 candidates.push((parent.join(name), SourceFileRole::UserInclude, None));
             }
         }
-        for (root, kind, logical_root) in &self.search_roots {
+        for (root, kind, logical_root) in self.search_roots.iter().skip(resume) {
             let role = if *kind == IncludeSearchKind::System {
                 SourceFileRole::SystemInclude
             } else {
@@ -1357,8 +1378,12 @@ impl TracedProcessor<'_> {
             let loaded = self.load_physical(&canonical, role)?;
             return Ok(Some((loaded, root)));
         }
-        if let Some(source) = self.builtins.get(name).cloned() {
-            return Ok(Some((self.load_builtin(name, &source)?, None)));
+        // A builtin is the last resort, and never satisfies `#include_next`:
+        // resuming the search must not land back on the header PARC supplies.
+        if resumed.is_none() {
+            if let Some(source) = self.builtins.get(name).cloned() {
+                return Ok(Some((self.load_builtin(name, &source)?, None)));
+            }
         }
         Ok(None)
     }
