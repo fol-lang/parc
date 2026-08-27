@@ -1225,6 +1225,26 @@ impl<'a> ContractExtractor<'a> {
         range: Option<SourceRange>,
         declaration: Option<DeclarationId>,
     ) -> SourceDiagnostic {
+        // A diagnostic that names a declaration scopes to that declaration.
+        //
+        // `Rejected` means the scan itself failed -- the preprocessor timed
+        // out, its output exceeded the cap -- after which nothing that was read
+        // can be trusted. A construct in one declaration is never that: the
+        // parse succeeded, the declaration carries its own `Unsupported`
+        // status, and `reject_status` refuses it the moment a selection reaches
+        // it. Rejecting the package instead refuses a whole header over
+        // declarations nobody asked for, and every real header has some --
+        // `stdarg.h` types `__gnuc_va_list` from a compiler builtin PARC does
+        // not model, and that alone made every header reaching it unreadable.
+        //
+        // Enforced here rather than at each site so a new one cannot reopen it.
+        // Severity still separates unsupported from partial.
+        let completeness_impact = match (declaration, completeness_impact) {
+            (Some(_), DiagnosticCompletenessImpact::ForcesRejected) => {
+                DiagnosticCompletenessImpact::ForcesPartial
+            }
+            (_, impact) => impact,
+        };
         SourceDiagnostic {
             code: code(code_value),
             stage,

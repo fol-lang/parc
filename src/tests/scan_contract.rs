@@ -355,11 +355,13 @@ fn nameless_top_level_declarator_is_not_silently_discarded() {
     }));
 }
 
+/// A visibility PARC cannot read refuses the declaration, not the file.
 #[test]
-fn malformed_visibility_has_matching_rejection_diagnostic() {
+fn malformed_visibility_is_refused_and_scoped_to_its_declaration() {
     let fixture = Fixture::new(
         "visibility",
-        "int bad_visibility(void) __attribute__((visibility(\"mystery\")));\n",
+        "int bad_visibility(void) __attribute__((visibility(\"mystery\")));\n\
+         int neighbour(void);\n",
     );
     let package = scan_headers(&fixture.config())
         .expect("malformed visibility scan")
@@ -369,9 +371,16 @@ fn malformed_visibility_has_matching_rejection_diagnostic() {
         &package,
         declaration,
         "PARC-E1215",
-        DiagnosticCompletenessImpact::ForcesRejected,
+        DiagnosticCompletenessImpact::ForcesPartial,
     );
     assert_eq!(declaration.visibility, Visibility::Unspecified);
+
+    // The neighbour is untouched by it, which is the point.
+    let neighbour = named(&package, "neighbour").id;
+    package
+        .clone()
+        .into_complete(&Selection::only([neighbour]).expect("neighbour root"))
+        .expect("a selection that avoids the bad declaration completes");
 }
 
 /// A pointer written before a function-pointer declarator belongs to the
@@ -438,7 +447,7 @@ typedef int (__attribute__((stdcall)) *bad_callback)(void) __attribute__((cdecl)
             &package,
             declaration,
             "PARC-E1214",
-            DiagnosticCompletenessImpact::ForcesRejected,
+            DiagnosticCompletenessImpact::ForcesPartial,
         );
     }
     let callback = named(&package, "bad_callback");
@@ -985,7 +994,7 @@ fn include_symlinks_may_not_escape_explicit_mapping_roots() {
 
 #[test]
 fn exact_type_failures_have_correlated_forcing_diagnostics() {
-    for (label, source, name, code, rejected, diagnostic_offsets) in [
+    for (label, source, name, code, unsupported, diagnostic_offsets) in [
         (
             "negative-array",
             "int values[-1];\n",
@@ -1040,15 +1049,30 @@ fn exact_type_failures_have_correlated_forcing_diagnostics() {
             .unwrap_or_else(|error| panic!("{label} scan: {error}"))
             .into_package();
         let declaration = named(&package, name);
+        // None of these forces rejection. Each is a fact about *this*
+        // declaration, and a declaration's problem is not a reason to distrust
+        // the rest of the file -- the parse succeeded. What still separates
+        // them is severity, and the status the declaration carries, which is
+        // what refuses it the moment a selection reaches it.
         let diagnostic = assert_support_diagnostic(
             &package,
             declaration,
             code,
-            if rejected {
-                DiagnosticCompletenessImpact::ForcesRejected
+            DiagnosticCompletenessImpact::ForcesPartial,
+        );
+        assert_eq!(
+            diagnostic.severity,
+            if unsupported {
+                Severity::Error
             } else {
-                DiagnosticCompletenessImpact::ForcesPartial
+                Severity::Warning
             },
+            "{label}: severity separates unsupported from partial"
+        );
+        assert_eq!(
+            matches!(declaration.support, SupportStatus::Unsupported { .. }),
+            unsupported,
+            "{label}: the declaration carries the distinction"
         );
         if let Some((start, end)) = diagnostic_offsets {
             let range = diagnostic
