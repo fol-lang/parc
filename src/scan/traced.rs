@@ -1727,16 +1727,74 @@ fn replace_defined_checked(
 
 #[derive(Debug)]
 enum ConditionExpr {
-    Value(i128),
+    Value(ConditionValue),
     Unary(&'static str, Box<ConditionExpr>),
     Binary(&'static str, Box<ConditionExpr>, Box<ConditionExpr>),
     Ternary(Box<ConditionExpr>, Box<ConditionExpr>, Box<ConditionExpr>),
+}
+
+/// One operand of a `#if` expression.
+///
+/// C evaluates every one of them at `intmax_t` or `uintmax_t` width, and one
+/// unsigned operand makes the whole operation unsigned. That is not a
+/// convention this crate chose: it is the arithmetic the standard specifies for
+/// this context, and it is what `((UINT_MAX >> 30) >= 3)` -- Lua's test for a
+/// 32-bit `int` -- depends on to mean what its author wrote.
+#[derive(Debug, Clone, Copy)]
+struct ConditionValue {
+    /// Two's-complement bits, already reduced to the target's intmax width.
+    bits: u128,
+    unsigned: bool,
+}
+
+impl ConditionValue {
+    const fn signed(value: i128, width: u32) -> Self {
+        Self {
+            bits: (value as u128) & width_mask(width),
+            unsigned: false,
+        }
+    }
+
+    const fn unsigned(bits: u128, width: u32) -> Self {
+        Self {
+            bits: bits & width_mask(width),
+            unsigned: true,
+        }
+    }
+
+    /// The value as C would read it, which needs the width to know where the
+    /// sign bit is.
+    const fn as_signed(self, width: u32) -> i128 {
+        if width == 128 {
+            return self.bits as i128;
+        }
+        let shift = 128 - width;
+        ((self.bits << shift) as i128) >> shift
+    }
+
+    const fn is_zero(self) -> bool {
+        self.bits == 0
+    }
+
+    /// A comparison or a logical operator: the result is `int`, so signed.
+    const fn boolean(value: bool, width: u32) -> Self {
+        Self::signed(value as i128, width)
+    }
+}
+
+const fn width_mask(width: u32) -> u128 {
+    if width == 128 {
+        u128::MAX
+    } else {
+        (1_u128 << width) - 1
+    }
 }
 
 struct ConditionParser<'a> {
     tokens: Vec<&'a TracedToken>,
     position: usize,
     signed_max: i128,
+    signed_width: u32,
 }
 
 fn evaluate_checked_condition(
@@ -1767,6 +1825,7 @@ fn evaluate_checked_condition(
             .collect(),
         position: 0,
         signed_max,
+        signed_width,
     };
     if parser.tokens.is_empty() {
         return Err("empty expression");
@@ -1775,7 +1834,7 @@ fn evaluate_checked_condition(
     if parser.peek().is_some() {
         return Err("trailing tokens");
     }
-    Ok(evaluate_condition_expr(&expression, signed_width, signed_max)? != 0)
+    Ok(!evaluate_condition_expr(&expression, signed_width, signed_max)?.is_zero())
 }
 
 impl ConditionParser<'_> {
@@ -1890,27 +1949,41 @@ impl ConditionParser<'_> {
         let text = token.text.clone();
         self.position += 1;
         match kind {
-            TokenKind::Number => {
-                parse_condition_integer(&text, self.signed_max).map(ConditionExpr::Value)
-            }
-            TokenKind::Ident => Ok(ConditionExpr::Value(0)),
+            TokenKind::Number => parse_condition_integer(&text, self.signed_max, self.signed_width)
+                .map(ConditionExpr::Value),
+            // An identifier that survived expansion is `0`, and `0` is signed.
+            TokenKind::Ident => Ok(ConditionExpr::Value(ConditionValue::signed(
+                0,
+                self.signed_width,
+            ))),
             TokenKind::CharLiteral => Err("character constants require an execution character set"),
             _ => Err("unsupported preprocessing token"),
         }
     }
 }
 
-fn parse_condition_integer(text: &str, signed_max: i128) -> Result<i128, &'static str> {
+fn parse_condition_integer(
+    text: &str,
+    signed_max: i128,
+    signed_width: u32,
+) -> Result<ConditionValue, &'static str> {
     let suffix_start = text
         .rfind(|character: char| !matches!(character, 'u' | 'U' | 'l' | 'L'))
         .map_or(0, |index| {
             index + text[index..].chars().next().map_or(0, char::len_utf8)
         });
     let (number, suffix) = text.split_at(suffix_start);
-    if suffix.bytes().any(|byte| matches!(byte, b'u' | b'U')) {
-        return Err("unsigned integer semantics are outside the certified subset");
+    let mut suffixed_unsigned = false;
+    let mut long_count = 0;
+    for byte in suffix.bytes() {
+        match byte {
+            b'u' | b'U' if suffixed_unsigned => return Err("invalid integer suffix"),
+            b'u' | b'U' => suffixed_unsigned = true,
+            b'l' | b'L' => long_count += 1,
+            _ => return Err("invalid integer suffix"),
+        }
     }
-    if suffix.len() > 2 || !suffix.bytes().all(|byte| matches!(byte, b'l' | b'L')) {
+    if long_count > 2 {
         return Err("invalid integer suffix");
     }
     let (radix, digits) = if let Some(value) = number
@@ -1932,21 +2005,37 @@ fn parse_condition_integer(text: &str, signed_max: i128) -> Result<i128, &'stati
         return Err("invalid integer literal");
     }
     let value = u128::from_str_radix(digits, radix).map_err(|_| "invalid integer literal")?;
-    if value > signed_max as u128 {
+    if value > width_mask(signed_width) {
+        return Err("integer literal exceeds target uintmax range");
+    }
+    if suffixed_unsigned {
+        return Ok(ConditionValue::unsigned(value, signed_width));
+    }
+    if value <= signed_max as u128 {
+        return Ok(ConditionValue::signed(value as i128, signed_width));
+    }
+    // Past `intmax_t` with no suffix. C gives a decimal literal no unsigned
+    // type to fall back to, so that one is an error rather than a silent
+    // reinterpretation; every other base takes `uintmax_t`. `0xFFFFFFFF` on a
+    // 32-bit `intmax` is the case that matters, and it is unsigned.
+    if radix == 10 {
         return Err("integer literal exceeds target intmax range");
     }
-    Ok(value as i128)
+    Ok(ConditionValue::unsigned(value, signed_width))
 }
 
 fn evaluate_condition_expr(
     expression: &ConditionExpr,
     signed_width: u32,
     signed_max: i128,
-) -> Result<i128, &'static str> {
+) -> Result<ConditionValue, &'static str> {
     let signed_min = -signed_max - 1;
+    // Signed overflow is undefined in C, so it stays refused rather than
+    // wrapped. Unsigned arithmetic below wraps by definition and needs no
+    // equivalent.
     let checked = |value: i128| {
         if (signed_min..=signed_max).contains(&value) {
-            Ok(value)
+            Ok(ConditionValue::signed(value, signed_width))
         } else {
             Err("signed arithmetic overflow")
         }
@@ -1956,103 +2045,136 @@ fn evaluate_condition_expr(
         ConditionExpr::Unary(operator, value) => {
             let value = evaluate_condition_expr(value, signed_width, signed_max)?;
             match *operator {
-                "!" => Ok(i128::from(value == 0)),
+                "!" => Ok(ConditionValue::boolean(value.is_zero(), signed_width)),
                 "+" => Ok(value),
-                "-" => checked(value.checked_neg().ok_or("signed arithmetic overflow")?),
+                "-" if value.unsigned => Ok(ConditionValue::unsigned(
+                    value.bits.wrapping_neg(),
+                    signed_width,
+                )),
+                "-" => checked(
+                    value
+                        .as_signed(signed_width)
+                        .checked_neg()
+                        .ok_or("signed arithmetic overflow")?,
+                ),
+                // Exact for an unsigned operand: the width is known and every
+                // bit pattern in it is a value. A signed one still turns on the
+                // target's representation, which this dialect does not fix.
+                "~" if value.unsigned => Ok(ConditionValue::unsigned(!value.bits, signed_width)),
                 "~" => Err("bitwise complement requires target representation semantics"),
                 _ => Err("unsupported unary operator"),
             }
         }
         ConditionExpr::Binary("&&", left, right) => {
             let left = evaluate_condition_expr(left, signed_width, signed_max)?;
-            if left == 0 {
-                Ok(0)
+            if left.is_zero() {
+                Ok(ConditionValue::boolean(false, signed_width))
             } else {
-                Ok(i128::from(
-                    evaluate_condition_expr(right, signed_width, signed_max)? != 0,
-                ))
+                let right = evaluate_condition_expr(right, signed_width, signed_max)?;
+                Ok(ConditionValue::boolean(!right.is_zero(), signed_width))
             }
         }
         ConditionExpr::Binary("||", left, right) => {
             let left = evaluate_condition_expr(left, signed_width, signed_max)?;
-            if left != 0 {
-                Ok(1)
+            if !left.is_zero() {
+                Ok(ConditionValue::boolean(true, signed_width))
             } else {
-                Ok(i128::from(
-                    evaluate_condition_expr(right, signed_width, signed_max)? != 0,
-                ))
+                let right = evaluate_condition_expr(right, signed_width, signed_max)?;
+                Ok(ConditionValue::boolean(!right.is_zero(), signed_width))
             }
         }
         ConditionExpr::Binary(operator, left, right) => {
             let left = evaluate_condition_expr(left, signed_width, signed_max)?;
             let right = evaluate_condition_expr(right, signed_width, signed_max)?;
+            // The usual arithmetic conversions, which at this width come to
+            // one question: is either operand unsigned? A shift is the
+            // exception -- its result takes the left operand's type alone, so
+            // the count never drags the value into unsigned.
+            let unsigned = left.unsigned || right.unsigned;
+            let (lhs, rhs) = (left.as_signed(signed_width), right.as_signed(signed_width));
+            let (lbits, rbits) = (left.bits, right.bits);
             match *operator {
-                "+" => checked(
-                    left.checked_add(right)
-                        .ok_or("signed arithmetic overflow")?,
-                ),
-                "-" => checked(
-                    left.checked_sub(right)
-                        .ok_or("signed arithmetic overflow")?,
-                ),
-                "*" => checked(
-                    left.checked_mul(right)
-                        .ok_or("signed arithmetic overflow")?,
-                ),
-                "/" => {
-                    if right == 0 {
+                "+" if unsigned => Ok(ConditionValue::unsigned(
+                    lbits.wrapping_add(rbits),
+                    signed_width,
+                )),
+                "+" => checked(lhs.checked_add(rhs).ok_or("signed arithmetic overflow")?),
+                "-" if unsigned => Ok(ConditionValue::unsigned(
+                    lbits.wrapping_sub(rbits),
+                    signed_width,
+                )),
+                "-" => checked(lhs.checked_sub(rhs).ok_or("signed arithmetic overflow")?),
+                "*" if unsigned => Ok(ConditionValue::unsigned(
+                    lbits.wrapping_mul(rbits),
+                    signed_width,
+                )),
+                "*" => checked(lhs.checked_mul(rhs).ok_or("signed arithmetic overflow")?),
+                "/" | "%" if (unsigned && rbits == 0) || (!unsigned && rhs == 0) => {
+                    if *operator == "/" {
                         Err("division by zero")
                     } else {
-                        checked(
-                            left.checked_div(right)
-                                .ok_or("signed arithmetic overflow")?,
-                        )
-                    }
-                }
-                "%" => {
-                    if right == 0 {
                         Err("remainder by zero")
+                    }
+                }
+                "/" if unsigned => Ok(ConditionValue::unsigned(lbits / rbits, signed_width)),
+                "/" => checked(lhs.checked_div(rhs).ok_or("signed arithmetic overflow")?),
+                "%" if unsigned => Ok(ConditionValue::unsigned(lbits % rbits, signed_width)),
+                "%" => checked(lhs.checked_rem(rhs).ok_or("signed arithmetic overflow")?),
+                "<<" | ">>" => {
+                    let count = if right.unsigned {
+                        u32::try_from(rbits).map_err(|_| "shift count is out of range")?
                     } else {
-                        checked(
-                            left.checked_rem(right)
-                                .ok_or("signed arithmetic overflow")?,
-                        )
+                        u32::try_from(rhs).map_err(|_| "negative shift count")?
+                    };
+                    if count >= signed_width {
+                        return Err("shift count is not less than the operand width");
+                    }
+                    match (*operator, left.unsigned) {
+                        (">>", true) => Ok(ConditionValue::unsigned(lbits >> count, signed_width)),
+                        ("<<", true) => Ok(ConditionValue::unsigned(
+                            lbits.wrapping_shl(count),
+                            signed_width,
+                        )),
+                        // A negative left operand is where C stops saying what
+                        // happens, and so does this.
+                        (_, false) if lhs < 0 => Err("shift of a negative value"),
+                        (">>", false) => Ok(ConditionValue::signed(lhs >> count, signed_width)),
+                        _ => checked(lhs.checked_shl(count).ok_or("invalid left shift")?),
                     }
                 }
-                "<<" => {
-                    let shift = u32::try_from(right).map_err(|_| "negative shift count")?;
-                    if shift >= signed_width || left < 0 {
-                        return Err("invalid left shift");
-                    }
-                    checked(left.checked_shl(shift).ok_or("invalid left shift")?)
-                }
-                ">>" => {
-                    let shift = u32::try_from(right).map_err(|_| "negative shift count")?;
-                    if shift >= signed_width || left < 0 {
-                        return Err("implementation-defined right shift");
-                    }
-                    Ok(left >> shift)
-                }
-                "&" | "|" | "^" if left < 0 || right < 0 => {
+                "&" | "|" | "^" if !unsigned && (lhs < 0 || rhs < 0) => {
                     Err("bitwise operation on a negative value requires representation semantics")
                 }
-                "&" => Ok(left & right),
-                "|" => Ok(left | right),
-                "^" => Ok(left ^ right),
-                "==" => Ok(i128::from(left == right)),
-                "!=" => Ok(i128::from(left != right)),
-                "<" => Ok(i128::from(left < right)),
-                ">" => Ok(i128::from(left > right)),
-                "<=" => Ok(i128::from(left <= right)),
-                ">=" => Ok(i128::from(left >= right)),
+                "&" if unsigned => Ok(ConditionValue::unsigned(lbits & rbits, signed_width)),
+                "|" if unsigned => Ok(ConditionValue::unsigned(lbits | rbits, signed_width)),
+                "^" if unsigned => Ok(ConditionValue::unsigned(lbits ^ rbits, signed_width)),
+                "&" => checked(lhs & rhs),
+                "|" => checked(lhs | rhs),
+                "^" => checked(lhs ^ rhs),
+                "==" | "!=" | "<" | ">" | "<=" | ">=" => {
+                    let ordering = if unsigned {
+                        lbits.cmp(&rbits)
+                    } else {
+                        lhs.cmp(&rhs)
+                    };
+                    let answer = match *operator {
+                        "==" => ordering.is_eq(),
+                        "!=" => ordering.is_ne(),
+                        "<" => ordering.is_lt(),
+                        ">" => ordering.is_gt(),
+                        "<=" => ordering.is_le(),
+                        _ => ordering.is_ge(),
+                    };
+                    Ok(ConditionValue::boolean(answer, signed_width))
+                }
                 _ => Err("unsupported binary operator"),
             }
         }
         ConditionExpr::Ternary(condition, then_value, else_value) => {
-            if evaluate_condition_expr(condition, signed_width, signed_max)? != 0 {
-                evaluate_condition_expr(then_value, signed_width, signed_max)
-            } else {
+            if evaluate_condition_expr(condition, signed_width, signed_max)?.is_zero() {
                 evaluate_condition_expr(else_value, signed_width, signed_max)
+            } else {
+                evaluate_condition_expr(then_value, signed_width, signed_max)
             }
         }
     }

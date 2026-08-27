@@ -598,7 +598,6 @@ fn malformed_conditionals_and_nonexact_if_expressions_are_rejected() {
         ("wide-shift", "1 << 64"),
         ("ternary", "1 ? 2"),
         ("paren", "(1 + 2"),
-        ("unsigned", "1U < 2U"),
         ("complement", "~0"),
     ] {
         let fixture = Fixture::new(label, &format!("#if {expression}\nint chosen;\n#endif\n"));
@@ -611,6 +610,48 @@ fn malformed_conditionals_and_nonexact_if_expressions_are_rejected() {
             Completeness::Rejected { .. }
         ));
     }
+
+    // Unsigned `#if` arithmetic. Not a widening of what this crate is willing
+    // to guess at: C evaluates these operands at `uintmax_t` and says exactly
+    // what each operator does there, so every answer below is the one the
+    // standard names. `(UINT_MAX >> 30) >= 3` is Lua's test for a 32-bit
+    // `int`, and it was the reason `luaconf.h` could not be read at all.
+    for (label, expression) in [
+        ("compare", "1U < 2U"),
+        ("mixed-compare", "2U > 1"),
+        ("shift-right", "(4294967295U >> 30) >= 3"),
+        ("wrap-subtract", "(0U - 1U) > 0U"),
+        ("wrap-negate", "(-1U) > 0U"),
+        ("complement", "(~0U) > 0U"),
+        ("hex-past-intmax", "0xFFFFFFFFFFFFFFFF > 0"),
+        ("mask", "(0xFFU & 0x0FU) == 15U"),
+        ("promote-signed", "(-1 > 0U)"),
+    ] {
+        let fixture = Fixture::new(label, &format!("#if {expression}\nint chosen;\n#endif\n"));
+        let package = scan_headers(&fixture.config())
+            .unwrap_or_else(|error| panic!("{label} scan: {error}"))
+            .into_package();
+        assert_eq!(
+            package.completeness(),
+            &Completeness::Complete,
+            "{label} should be exactly evaluable: {:#?}",
+            package.diagnostics()
+        );
+        assert!(
+            named_optional(&package, "chosen").is_some(),
+            "{label} should have taken the branch"
+        );
+    }
+
+    // The conversion that catches people out, and the reason it has to be
+    // modelled rather than approximated: `-1` converted to unsigned is the
+    // largest value there is, so the branch is *not* taken.
+    let signed_loses = Fixture::new("unsigned-conversion", "#if 0U > -1\nint chosen;\n#endif\n");
+    let package = scan_headers(&signed_loses.config())
+        .expect("unsigned conversion scan")
+        .into_package();
+    assert_eq!(package.completeness(), &Completeness::Complete);
+    assert!(named_optional(&package, "chosen").is_none());
 
     let valid = Fixture::new(
         "checked-signed-if",
