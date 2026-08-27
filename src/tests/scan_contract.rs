@@ -374,6 +374,52 @@ fn malformed_visibility_has_matching_rejection_diagnostic() {
     assert_eq!(declaration.visibility, Visibility::Unspecified);
 }
 
+/// A pointer written before a function-pointer declarator belongs to the
+/// return type.
+///
+/// `sqlite3.h` hands back `sqlite3_mutex *` from a callback in
+/// `sqlite3_mutex_methods`. Reading that as a return of `sqlite3_mutex`
+/// demanded a definition of a record that is opaque by design, and the whole
+/// header was refused over it.
+#[test]
+fn a_callback_returning_a_pointer_keeps_the_pointer_on_its_return_type() {
+    let fixture = Fixture::new(
+        "callback-return",
+        r#"
+struct opaque;
+typedef struct opaque *(*maker)(int);
+typedef int *pointers[4];
+"#,
+    );
+    let package = scan_headers(&fixture.config())
+        .expect("callback return scan")
+        .into_package();
+
+    let SourceDeclarationKind::TypeAlias(alias) = &named(&package, "maker").kind else {
+        panic!("maker must be a type alias");
+    };
+    let CTypeKind::Pointer(pointee) = &alias.target.kind else {
+        panic!("maker is a pointer to a function");
+    };
+    let CTypeKind::Function(function) = &pointee.kind else {
+        panic!("maker points at a function");
+    };
+    assert!(
+        matches!(function.return_type.kind, CTypeKind::Pointer(_)),
+        "the return type is a pointer, not {:?}",
+        function.return_type.kind
+    );
+
+    // The same ordering rule, where the array binds tighter than the pointer.
+    let SourceDeclarationKind::TypeAlias(alias) = &named(&package, "pointers").kind else {
+        panic!("pointers must be a type alias");
+    };
+    let CTypeKind::Array { element, .. } = &alias.target.kind else {
+        panic!("pointers is an array of pointers, not a pointer to an array");
+    };
+    assert!(matches!(element.kind, CTypeKind::Pointer(_)));
+}
+
 #[test]
 fn conflicting_calling_conventions_reject_direct_and_nested_functions() {
     let fixture = Fixture::new(

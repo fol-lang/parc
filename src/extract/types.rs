@@ -252,12 +252,22 @@ impl<'a> TypeResolver<'a> {
         declarator: &Declarator,
         mut parameter_array_allowed: bool,
     ) -> CType {
-        let mut pointers = Vec::new();
+        // A pointer in a declarator applies to the base type, and the array or
+        // function written after the declarator applies to the result:
+        // `T *(*f)(int)` is a pointer to a function *returning* `T *`. Applying
+        // the pointers last moved the `*` off the return type and onto the
+        // function, so a callback handing back `sqlite3_mutex *` read as one
+        // handing back `sqlite3_mutex` -- and asked for a definition of a record
+        // that has none. Plain function declarations take `function_parts`,
+        // which never had this order wrong, so only function *pointers* did.
+        for derived in &declarator.derived {
+            if let DerivedDeclarator::Pointer(qualifiers) = &derived.node {
+                ty = pointer(ty, pointer_qualifiers(qualifiers));
+            }
+        }
         for derived in &declarator.derived {
             match &derived.node {
-                DerivedDeclarator::Pointer(qualifiers) => {
-                    pointers.push(pointer_qualifiers(qualifiers));
-                }
+                DerivedDeclarator::Pointer(_) => {}
                 DerivedDeclarator::Array(array) => {
                     ty = array_type(
                         self.source,
@@ -306,9 +316,6 @@ impl<'a> TypeResolver<'a> {
                     );
                 }
             }
-        }
-        for qualifiers in pointers {
-            ty = pointer(ty, qualifiers);
         }
         if let DeclaratorKind::Declarator(inner) = &declarator.kind.node {
             ty = self.apply_derived(ty, &inner.node, parameter_array_allowed);
