@@ -589,6 +589,52 @@ fn unsupported_directives_pragmas_line_markers_and_midline_hash_fail_closed() {
     }
 }
 
+/// A pragma that only selects warnings is not a gap in the scan.
+///
+/// `#pragma GCC diagnostic push|pop|ignored` chooses which messages the
+/// *compiler* prints. It cannot reach a declaration, a type or a layout, so
+/// there is nothing here for a scan to model -- and forcing a package partial
+/// over it refused glibc's `bits/stdlib-bsearch.h`, and with it every header
+/// that reaches `stdlib.h`. It stays recorded, because a reader should see
+/// every directive that was active; it just no longer decides completeness.
+#[test]
+fn diagnostic_only_pragmas_are_recorded_without_forcing_partial() {
+    for (label, source) in [
+        ("push", "#pragma GCC diagnostic push\nint chosen;\n"),
+        (
+            "ignored",
+            "#pragma GCC diagnostic ignored \"-Wcast-qual\"\nint chosen;\n",
+        ),
+        ("pop", "#pragma GCC diagnostic pop\nint chosen;\n"),
+        ("clang", "#pragma clang diagnostic push\nint chosen;\n"),
+    ] {
+        let fixture = Fixture::new(label, source);
+        let package = scan_headers(&fixture.config())
+            .unwrap_or_else(|error| panic!("{label} scan: {error}"))
+            .into_package();
+        assert_eq!(
+            package.completeness(),
+            &Completeness::Complete,
+            "{label} should not decide completeness: {:#?}",
+            package.diagnostics()
+        );
+        assert_diagnostic(&package, "PARC-P2105");
+        assert!(named_optional(&package, "chosen").is_some());
+    }
+
+    // The neighbouring pragma is still unmodelled, because a vendor pragma may
+    // mean anything at all. Only the diagnostic family is known to be inert.
+    let unknown = Fixture::new("vendor", "#pragma vendor_magic\nint chosen;\n");
+    let package = scan_headers(&unknown.config())
+        .expect("vendor pragma scan")
+        .into_package();
+    assert_diagnostic(&package, "PARC-P2103");
+    assert!(matches!(
+        package.completeness(),
+        Completeness::Partial { .. }
+    ));
+}
+
 #[test]
 fn malformed_conditionals_and_nonexact_if_expressions_are_rejected() {
     for (label, expression) in [

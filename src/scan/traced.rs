@@ -779,6 +779,7 @@ impl TracedProcessor<'_> {
                             .iter()
                             .map(|token| token.text.as_str())
                             .collect::<String>();
+                        let words: Vec<&str> = spelling.split_whitespace().collect();
                         if spelling.trim() == "once" {
                             self.pragma_once.insert(loaded.id);
                         } else if spelling.trim_start().starts_with("pack") {
@@ -789,6 +790,30 @@ impl TracedProcessor<'_> {
                                 message:
                                     "#pragma pack is ABI-relevant and not modeled by H2 lowering"
                                         .to_owned(),
+                                range: Some(range),
+                            });
+                        } else if matches!(words.first(), Some(&"GCC" | &"clang"))
+                            && words.get(1) == Some(&"diagnostic")
+                        {
+                            // Warnings, and nothing else. `#pragma GCC
+                            // diagnostic push|pop|ignored|warning|error`
+                            // selects which messages the *compiler* prints; it
+                            // cannot reach a declaration, a type or a layout,
+                            // so there is nothing here for a scan to model.
+                            // Recorded rather than dropped, because a reader
+                            // should still see every directive that was active
+                            // -- but recorded as informational, since forcing
+                            // a package partial over it refused glibc's
+                            // `bits/stdlib-bsearch.h`, and with it every
+                            // header that reaches `stdlib.h`.
+                            self.issues.push(TraceIssue {
+                                code: "PARC-P2105",
+                                severity: Severity::Note,
+                                impact: DiagnosticCompletenessImpact::Informational,
+                                message: format!(
+                                    "diagnostic-only pragma has no effect on the scan: {}",
+                                    spelling.trim()
+                                ),
                                 range: Some(range),
                             });
                         } else {
