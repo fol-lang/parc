@@ -627,22 +627,12 @@ fn malformed_conditionals_and_nonexact_if_expressions_are_rejected() {
 }
 
 #[test]
-fn malformed_macro_invocations_and_operators_are_rejected() {
+fn malformed_macro_invocations_are_rejected() {
     for (label, source, code) in [
         (
             "macro-arity",
             "#define ADD(a,b) ((a)+(b))\nint value = ADD(1);\n",
             "PARC-E2110",
-        ),
-        (
-            "macro-hash",
-            "#define STRINGIFY(x) #x\nint value;\n",
-            "PARC-E2111",
-        ),
-        (
-            "macro-paste",
-            "#define PASTE(a,b) a ## b\nint value;\n",
-            "PARC-E2111",
         ),
         (
             "macro-unclosed",
@@ -659,6 +649,59 @@ fn malformed_macro_invocations_and_operators_are_rejected() {
             package.completeness(),
             Completeness::Rejected { .. }
         ));
+    }
+}
+
+/// A macro that stringifies or pastes is unsupported; the package is not.
+///
+/// These are ordinary in real headers -- `luaconf.h` pastes a float suffix,
+/// glibc's `stdint.h` builds `INT64_C` that way -- so the fact belongs on the
+/// macro, which carries its own support status, and a caller selecting a
+/// routine is unaffected.
+#[test]
+fn a_macro_that_pastes_is_unsupported_without_rejecting_the_package() {
+    for (label, source, name) in [
+        (
+            "macro-hash",
+            "#define STRINGIFY(x) #x\nint value;\n",
+            "STRINGIFY",
+        ),
+        (
+            "macro-paste",
+            "#define PASTE(a,b) a ## b\nint value;\n",
+            "PASTE",
+        ),
+    ] {
+        let fixture = Fixture::new(label, source);
+        let package = scan_headers(&fixture.config())
+            .unwrap_or_else(|error| panic!("{label} scan: {error}"))
+            .into_package();
+        assert_diagnostic(&package, "PARC-E2111");
+        assert!(
+            matches!(package.completeness(), Completeness::Partial { .. }),
+            "{label}: {:?}",
+            package.completeness()
+        );
+
+        let macro_item = package
+            .macros()
+            .iter()
+            .find(|item| item.name == name)
+            .unwrap_or_else(|| panic!("{label} declares {name}"));
+        let SupportStatus::Unsupported { code, .. } = &macro_item.support else {
+            panic!(
+                "{label}: {name} must be unsupported, not {:?}",
+                macro_item.support
+            );
+        };
+        assert_eq!(code.as_str(), "PARC-E2111");
+
+        // The routine beside it still completes.
+        let value = named(&package, "value");
+        package
+            .clone()
+            .into_complete(&Selection::only([value.id]).expect("value root"))
+            .unwrap_or_else(|error| panic!("{label}: a selection avoiding the macro: {error:?}"));
     }
 }
 

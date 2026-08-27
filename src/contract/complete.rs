@@ -1,6 +1,6 @@
 //! Proof wrapper for a complete, supported declaration closure.
 
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use thiserror::Error;
 
@@ -148,12 +148,27 @@ impl SourcePackage {
             // the package refuses a header over declarations the caller never
             // asked for.
             //
-            // What is left names no declaration because it has none to name.
+            // A macro names none either, and carries its own `support` instead.
+            // Where a macro already records the same code, that macro is the
+            // subject and the package is not: `luaconf.h` pastes a float suffix
+            // and glibc's `stdint.h` builds `INT64_C` that way, and a caller
+            // wanting a routine never asked for either.
+            //
+            // What is left names no subject because it has none to name.
             // Preprocessing without exact include and macro provenance
             // (`PARC-P0001`) does not impugn one declaration; it impugns the
             // source text all of them were read from, and that text is what
             // this package's fingerprint binds downstream evidence to.
             Completeness::Partial { .. } => {
+                let attributed: BTreeSet<_> = self
+                    .macros()
+                    .iter()
+                    .filter_map(|macro_item| match &macro_item.support {
+                        SupportStatus::Supported => None,
+                        SupportStatus::Partial { code, .. }
+                        | SupportStatus::Unsupported { code, .. } => Some(code.clone()),
+                    })
+                    .collect();
                 let package_scoped: Vec<_> = self
                     .diagnostics()
                     .iter()
@@ -162,6 +177,7 @@ impl SourcePackage {
                             != DiagnosticCompletenessImpact::Informational
                             && diagnostic.declaration.is_none()
                             && diagnostic.stage != DiagnosticStage::Recovery
+                            && !attributed.contains(&diagnostic.code)
                     })
                     .map(|diagnostic| CompletenessReason {
                         code: diagnostic.code.clone(),

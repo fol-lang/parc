@@ -162,6 +162,7 @@ struct TracedProcessor<'a> {
     loaded: BTreeMap<PathBuf, LoadedSource>,
     active_macros: BTreeMap<String, ActiveMacro>,
     inconsistent_macros: BTreeSet<String>,
+    pasting_macros: BTreeSet<String>,
     macro_definitions: Vec<MacroDefinitionSnapshot>,
     issues: Vec<TraceIssue>,
     pragma_once: BTreeSet<FileId>,
@@ -218,6 +219,7 @@ pub(super) fn preprocess_builtin_traced(
         loaded: BTreeMap::new(),
         active_macros: BTreeMap::new(),
         inconsistent_macros: BTreeSet::new(),
+        pasting_macros: BTreeSet::new(),
         macro_definitions: Vec::new(),
         issues: Vec::new(),
         pragma_once: BTreeSet::new(),
@@ -1170,15 +1172,20 @@ impl TracedProcessor<'_> {
                 range: Some(range),
             });
         }
+        // Scoped to the macro, the way a redefined one is. `#` and `##` are
+        // ordinary in real headers -- `luaconf.h` pastes a float suffix and
+        // glibc's `stdint.h` builds `INT64_C` that way -- so rejecting the
+        // package for one made every header that included them unreadable.
         if definition
             .body
             .iter()
             .any(|token| matches!(token.kind, TokenKind::Hash | TokenKind::HashHash))
         {
+            self.pasting_macros.insert(definition.name.clone());
             self.issues.push(TraceIssue {
                 code: "PARC-E2111",
                 severity: Severity::Error,
-                impact: DiagnosticCompletenessImpact::ForcesRejected,
+                impact: DiagnosticCompletenessImpact::ForcesPartial,
                 message: format!(
                     "macro {} uses unsupported stringification or token pasting",
                     definition.name
@@ -1253,7 +1260,12 @@ impl TracedProcessor<'_> {
                 continue;
             };
             let id = MacroId::named(file, &name).expect("preprocessor macro identifier");
-            let support = if self.inconsistent_macros.contains(&name) {
+            let support = if self.pasting_macros.contains(&name) {
+                SupportStatus::Unsupported {
+                    code: diagnostic_code("PARC-E2111"),
+                    reason: "macro uses unsupported stringification or token pasting".to_owned(),
+                }
+            } else if self.inconsistent_macros.contains(&name) {
                 let reason = "macro was redefined with a different form or replacement list";
                 SupportStatus::Partial {
                     code: diagnostic_code("PARC-P2110"),
