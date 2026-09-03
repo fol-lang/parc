@@ -485,6 +485,41 @@ fn unmodeled_abi_attribute_has_matching_partial_diagnostic() {
 }
 
 #[test]
+fn a_deprecated_attribute_is_preserved_not_a_blocker() {
+    let fixture = Fixture::new(
+        "deprecated-attribute",
+        "enum kind {\n\
+         KIND_A = 1,\n\
+         KIND_B __attribute__((deprecated(\"since 1.0. use KIND_A\"))) = 2,\n\
+         KIND_C = 3\n\
+         };\n\
+         int use_kind(enum kind k) __attribute__((deprecated(\"gone\")));\n",
+    );
+    let package = scan_headers(&fixture.config())
+        .expect("deprecated attribute scan")
+        .into_package();
+    assert_eq!(package.completeness(), &Completeness::Complete);
+
+    let kind = named(&package, "kind");
+    let SourceDeclarationKind::Enum(kind_enum) = &kind.kind else {
+        panic!("kind must lower as an enum");
+    };
+    let deprecated_variant = kind_enum
+        .variants
+        .iter()
+        .find(|variant| variant.name.original == "KIND_B")
+        .expect("deprecated enumerator");
+    assert!(deprecated_variant.support.is_supported());
+    assert!(matches!(
+        &deprecated_variant.value,
+        EnumValue::Evaluated { value } if *value == ExactInteger::signed(2)
+    ));
+
+    let use_kind = named(&package, "use_kind");
+    assert!(use_kind.support.is_supported());
+}
+
+#[test]
 fn transitive_files_declarations_macros_and_expansions_have_original_provenance() {
     let fixture = Fixture::new(
         "transitive-provenance",

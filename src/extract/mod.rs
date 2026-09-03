@@ -1732,6 +1732,8 @@ fn attributes_from_extensions(
                 let name = attribute.name.node.clone();
                 let disposition = if is_modeled_attribute(&name) {
                     AttributeDisposition::Modeled
+                } else if is_preserved_attribute(&name) {
+                    AttributeDisposition::Preserved
                 } else {
                     AttributeDisposition::UnsupportedAbiRelevant
                 };
@@ -1794,9 +1796,19 @@ fn is_modeled_attribute(name: &str) -> bool {
     )
 }
 
+fn is_preserved_attribute(name: &str) -> bool {
+    matches!(
+        name.trim().to_ascii_lowercase().as_str(),
+        "deprecated" | "__deprecated__"
+    )
+}
+
 fn has_unmodeled_extensions(extensions: &[Node<Extension>]) -> bool {
     extensions.iter().any(|extension| match &extension.node {
-        Extension::Attribute(attribute) => !is_modeled_attribute(&attribute.name.node),
+        Extension::Attribute(attribute) => {
+            !is_modeled_attribute(&attribute.name.node)
+                && !is_preserved_attribute(&attribute.name.node)
+        }
         Extension::AsmLabel(_) | Extension::AvailabilityAttribute(_) => false,
     })
 }
