@@ -14,7 +14,7 @@ use crate::preprocess::{Lexer, TokenKind};
 use crate::span::{Node, Span};
 
 use types::{
-    code, declarator_name, declarator_name_span, eval_const_expr, eval_exact_integer,
+    code, declarator_name, declarator_name_span, eval_const_expr, eval_exact_integer_in_env,
     is_function_declarator, TypeResolver,
 };
 
@@ -792,6 +792,9 @@ impl<'a> ContractExtractor<'a> {
         );
         let mut next_value = Some(ExactInteger::signed(0));
         let mut previous_name = None::<String>;
+        // Each evaluated enumerator by its source spelling, so a later one can
+        // be defined as an alias of it -- `VK_ERROR_FOO_EXT = VK_ERROR_FOO`.
+        let mut enum_values = std::collections::BTreeMap::<String, ExactInteger>::new();
         let variants = enumeration
             .enumerators
             .iter()
@@ -805,7 +808,10 @@ impl<'a> ContractExtractor<'a> {
                 let variant_id =
                     ChildId::named(id, ChildRole::EnumVariant, &name.normalized).ok()?;
                 let value = match &enumerator.node.expression {
-                    Some(expression) => match eval_exact_integer(&expression.node) {
+                    Some(expression) => match eval_exact_integer_in_env(
+                        &expression.node,
+                        &enum_values,
+                    ) {
                         Some(value) => {
                             next_value = increment_exact_integer(value);
                             EnumValue::Evaluated { value }
@@ -831,6 +837,9 @@ impl<'a> ContractExtractor<'a> {
                     },
                 };
                 previous_name = Some(name.normalized.clone());
+                if let EnumValue::Evaluated { value } = &value {
+                    enum_values.insert(name.original.clone(), *value);
+                }
                 let lowered_attributes = attributes_from_extensions(
                     self.context.source,
                     self.context.generated_file,

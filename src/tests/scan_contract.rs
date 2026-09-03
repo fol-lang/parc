@@ -520,6 +520,33 @@ fn a_deprecated_attribute_is_preserved_not_a_blocker() {
 }
 
 #[test]
+fn an_enumerator_aliased_to_a_sibling_resolves() {
+    let fixture = Fixture::new("enum-alias", "enum E { A = 5, B = A, C = -3, D = C };\n");
+    let package = scan_headers(&fixture.config())
+        .expect("enum alias scan")
+        .into_package();
+    assert_eq!(package.completeness(), &Completeness::Complete);
+    let e = named(&package, "E");
+    let SourceDeclarationKind::Enum(en) = &e.kind else {
+        panic!("E must lower as an enum");
+    };
+    let value_of = |wanted: &str| {
+        en.variants
+            .iter()
+            .find(|variant| variant.name.original == wanted)
+            .map(|variant| &variant.value)
+    };
+    assert!(matches!(
+        value_of("B"),
+        Some(EnumValue::Evaluated { value }) if *value == ExactInteger::signed(5)
+    ));
+    assert!(matches!(
+        value_of("D"),
+        Some(EnumValue::Evaluated { value }) if *value == ExactInteger::signed(-3)
+    ));
+}
+
+#[test]
 fn abi_inert_attributes_and_inline_specifiers_are_supported() {
     let fixture = Fixture::new(
         "inert-attributes",

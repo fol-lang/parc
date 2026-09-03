@@ -1094,6 +1094,20 @@ pub(crate) fn eval_const_expr(expr: &Expression) -> Option<i128> {
 /// target-dependent integer-conversion proof. Other expressions remain
 /// unevaluated rather than being narrowed through `i128`.
 pub(crate) fn eval_exact_integer(expr: &Expression) -> Option<ExactInteger> {
+    eval_exact_integer_in_env(expr, &std::collections::BTreeMap::new())
+}
+
+/// The same, resolving a bare identifier against already-evaluated names --
+/// the enum-alias idiom `VK_ERROR_FOO_EXT = VK_ERROR_FOO`, which Vulkan, GL and
+/// every extension-versioned C API lean on. The referenced enumerator keeps its
+/// own exact signedness, so no `i128` narrowing is introduced.
+pub(crate) fn eval_exact_integer_in_env(
+    expr: &Expression,
+    env: &std::collections::BTreeMap<String, ExactInteger>,
+) -> Option<ExactInteger> {
+    if let Expression::Identifier(identifier) = expr {
+        return env.get(&identifier.node.name).copied();
+    }
     match expr {
         Expression::Constant(constant) => match &constant.node {
             Constant::Integer(integer) if !integer.suffix.imaginary => {
@@ -1113,7 +1127,7 @@ pub(crate) fn eval_exact_integer(expr: &Expression) -> Option<ExactInteger> {
             _ => None,
         },
         Expression::UnaryOperator(unary) => {
-            let value = eval_exact_integer(&unary.node.operand.node)?;
+            let value = eval_exact_integer_in_env(&unary.node.operand.node, env)?;
             match unary.node.operator.node {
                 UnaryOperator::Plus => Some(value),
                 UnaryOperator::Minus => value
