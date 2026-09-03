@@ -1132,10 +1132,9 @@ impl<'a> ContractExtractor<'a> {
                     "PARC-E1216",
                     "explicit declaration alignment is ABI-relevant and not modeled",
                 ),
-                DeclarationSpecifier::Function(_) => (
-                    "PARC-E1217",
-                    "function specifier semantics are not modeled by source-contract lowering",
-                ),
+                // `inline` and `_Noreturn` do not change the symbol's calling
+                // convention or signature, so they are inert for a binding; the
+                // symbol either exists in the provider or the link step refuses.
                 _ => continue,
             };
             self.draft(id).support = unsupported_status(code_value, message);
@@ -1796,10 +1795,55 @@ fn is_modeled_attribute(name: &str) -> bool {
     )
 }
 
+// Attributes that are diagnostic or optimization hints only: none of them change
+// a symbol's calling convention, size, alignment, or layout, so they are inert
+// for an ABI binding. ABI-relevant attributes (packed, aligned, mode,
+// vector_size, ...) are deliberately absent and keep forcing a partial/blocked.
 fn is_preserved_attribute(name: &str) -> bool {
     matches!(
         name.trim().to_ascii_lowercase().as_str(),
-        "deprecated" | "__deprecated__"
+        "deprecated"
+            | "__deprecated__"
+            | "pure"
+            | "__pure__"
+            | "const"
+            | "__const__"
+            | "nothrow"
+            | "__nothrow__"
+            | "malloc"
+            | "__malloc__"
+            | "noinline"
+            | "__noinline__"
+            | "always_inline"
+            | "__always_inline__"
+            | "gnu_inline"
+            | "__gnu_inline__"
+            | "hot"
+            | "__hot__"
+            | "cold"
+            | "__cold__"
+            | "leaf"
+            | "__leaf__"
+            | "flatten"
+            | "__flatten__"
+            | "artificial"
+            | "__artificial__"
+            | "nonnull"
+            | "__nonnull__"
+            | "returns_nonnull"
+            | "__returns_nonnull__"
+            | "warn_unused_result"
+            | "__warn_unused_result__"
+            | "format"
+            | "__format__"
+            | "format_arg"
+            | "__format_arg__"
+            | "sentinel"
+            | "__sentinel__"
+            | "alloc_size"
+            | "__alloc_size__"
+            | "access"
+            | "__access__"
     )
 }
 

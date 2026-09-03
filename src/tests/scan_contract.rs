@@ -520,6 +520,27 @@ fn a_deprecated_attribute_is_preserved_not_a_blocker() {
 }
 
 #[test]
+fn abi_inert_attributes_and_inline_specifiers_are_supported() {
+    let fixture = Fixture::new(
+        "inert-attributes",
+        "unsigned long pure_fn(const int *p) __attribute__((__pure__));\n\
+         int const_fn(int x) __attribute__((__const__)) __attribute__((__nothrow__));\n\
+         int nonnull_fn(int *p) __attribute__((__nonnull__(1)));\n\
+         extern __inline__ __attribute__((__gnu_inline__)) int inline_fn(int x) { return x; }\n",
+    );
+    let package = scan_headers(&fixture.config())
+        .expect("inert attribute scan")
+        .into_package();
+    assert_eq!(package.completeness(), &Completeness::Complete);
+    for name in ["pure_fn", "const_fn", "nonnull_fn", "inline_fn"] {
+        assert!(
+            named(&package, name).support.is_supported(),
+            "{name} must model despite an inert attribute or inline specifier"
+        );
+    }
+}
+
+#[test]
 fn transitive_files_declarations_macros_and_expansions_have_original_provenance() {
     let fixture = Fixture::new(
         "transitive-provenance",
