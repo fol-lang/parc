@@ -1075,17 +1075,38 @@ impl TracedProcessor<'_> {
                 definition: Some(definition.definition_range),
             };
             let mut replacement = if let Some(arguments) = arguments {
-                substitute_macro(&definition.definition, &arguments, token, invocation)
+                let wanted = prescanned_arguments(&definition.definition, arguments.len());
+                let expanded = arguments
+                    .iter()
+                    .zip(&wanted)
+                    .map(|(argument, wanted)| {
+                        if *wanted {
+                            self.expand_tokens(argument.clone(), paint)
+                        } else {
+                            Vec::new()
+                        }
+                    })
+                    .collect::<Vec<_>>();
+                substitute_macro(
+                    &definition.definition,
+                    &arguments,
+                    &expanded,
+                    token,
+                    invocation,
+                )
             } else {
                 definition
                     .definition
                     .body
                     .iter()
-                    .map(|body| TracedToken {
-                        kind: body.kind.clone(),
-                        text: body.text.clone(),
-                        anchor: invocation,
-                        provenance: token.provenance.clone(),
+                    .map(|body| {
+                        let (kind, text) = emitted(&body.kind, &body.text);
+                        TracedToken {
+                            kind,
+                            text,
+                            anchor: invocation,
+                            provenance: token.provenance.clone(),
+                        }
                     })
                     .collect()
             };
@@ -1550,99 +1571,204 @@ fn collect_arguments(
     None
 }
 
+/// Which arguments C prescans: every parameter used other than as an operand
+/// of `#` or `##` is fully macro-expanded before it is substituted (C11
+/// 6.10.3.1). `__VA_ARGS__` stands for every argument past the named ones.
+fn prescanned_arguments(definition: &MacroDef, argument_count: usize) -> Vec<bool> {
+    let parameters = definition.params.as_deref().unwrap_or_default();
+    let mut wanted = vec![false; argument_count];
+    for (index, token) in definition.body.iter().enumerate() {
+        if token.kind != TokenKind::Ident
+            || matches!(
+                body_neighbour(&definition.body, index, false),
+                Some(TokenKind::Hash | TokenKind::HashHash)
+            )
+            || matches!(
+                body_neighbour(&definition.body, index, true),
+                Some(TokenKind::HashHash)
+            )
+        {
+            continue;
+        }
+        if token.text == "__VA_ARGS__" && definition.is_variadic {
+            for slot in wanted.iter_mut().skip(parameters.len()) {
+                *slot = true;
+            }
+        } else if let Some(slot) = parameters
+            .iter()
+            .position(|name| name == &token.text)
+            .and_then(|position| wanted.get_mut(position))
+        {
+            *slot = true;
+        }
+    }
+    wanted
+}
+
+/// A comment in a replacement list is whitespace (C11 5.1.1.2 phase 3).
+fn is_blank(kind: &TokenKind) -> bool {
+    matches!(
+        kind,
+        TokenKind::Whitespace | TokenKind::LineComment | TokenKind::BlockComment
+    )
+}
+
+/// One replacement-list token as emitted: comments become a single space.
+fn emitted(kind: &TokenKind, text: &str) -> (TokenKind, String) {
+    if is_blank(kind) && *kind != TokenKind::Whitespace {
+        (TokenKind::Whitespace, " ".to_owned())
+    } else {
+        (kind.clone(), text.to_owned())
+    }
+}
+
+/// The kind of the nearest non-blank body token before or after `index`.
+fn body_neighbour(body: &[Token], index: usize, forward: bool) -> Option<&TokenKind> {
+    let mut tokens: Box<dyn Iterator<Item = &Token>> = if forward {
+        Box::new(body.iter().skip(index + 1))
+    } else {
+        Box::new(body[..index].iter().rev())
+    };
+    tokens
+        .find(|token| !is_blank(&token.kind))
+        .map(|token| &token.kind)
+}
+
+fn skip_body_whitespace(body: &[Token], mut index: usize) -> usize {
+    while body.get(index).is_some_and(|token| is_blank(&token.kind)) {
+        index += 1;
+    }
+    index
+}
+
+fn is_identifier(text: &str) -> bool {
+    text.chars()
+        .next()
+        .is_some_and(|first| first == '_' || first.is_ascii_alphabetic())
+        && text
+            .chars()
+            .all(|character| character == '_' || character.is_ascii_alphanumeric())
+}
+
+/// Replace a function-like macro's parameters (C11 6.10.3.1-6.10.3.3).
+///
+/// `#` and `##` operands take the argument as written; every other use takes
+/// its prescanned expansion. `##` joins the last token on its left with the
+/// first on its right, and an empty argument is a placemarker that pastes to
+/// nothing. GNU `, ## __VA_ARGS__` drops the comma when the tail is empty.
 fn substitute_macro(
     definition: &MacroDef,
     arguments: &[Vec<TracedToken>],
+    expanded: &[Vec<TracedToken>],
     invocation_token: &TracedToken,
     invocation: SourceRange,
 ) -> Vec<TracedToken> {
     let parameters = definition.params.as_deref().unwrap_or_default();
-    let mut result = Vec::<TracedToken>::new();
-    let mut index = 0;
-    while index < definition.body.len() {
-        let token = &definition.body[index];
-        if token.kind == TokenKind::Hash {
-            let mut next = index + 1;
-            while next < definition.body.len()
-                && definition.body[next].kind == TokenKind::Whitespace
-            {
-                next += 1;
-            }
-            if let Some(parameter) = definition.body.get(next) {
-                if let Some(argument_index) =
-                    parameters.iter().position(|name| name == &parameter.text)
-                {
-                    let text =
-                        stringify(&arguments.get(argument_index).cloned().unwrap_or_default());
-                    result.push(TracedToken {
-                        kind: TokenKind::StringLiteral,
-                        text,
-                        anchor: invocation,
-                        provenance: invocation_token.provenance.clone(),
-                    });
-                    index = next + 1;
-                    continue;
+    let fresh = |kind: TokenKind, text: String| TracedToken {
+        kind,
+        text,
+        anchor: invocation,
+        provenance: invocation_token.provenance.clone(),
+    };
+    let operand = |name: &str, raw: bool| -> Option<Vec<TracedToken>> {
+        let source = if raw { arguments } else { expanded };
+        if name == "__VA_ARGS__" && definition.is_variadic {
+            let mut joined = Vec::new();
+            for (offset, argument) in source.iter().skip(parameters.len()).enumerate() {
+                if offset > 0 {
+                    joined.push(fresh(TokenKind::Punct, ",".to_owned()));
                 }
+                joined.extend(argument.iter().cloned());
+            }
+            return Some(joined);
+        }
+        let position = parameters.iter().position(|parameter| parameter == name)?;
+        Some(source.get(position).cloned().unwrap_or_default())
+    };
+    let body = &definition.body;
+    let mut result = Vec::<TracedToken>::new();
+    let mut placemarker = false;
+    let mut index = 0;
+    while index < body.len() {
+        let token = &body[index];
+        if token.kind == TokenKind::Hash {
+            let next = skip_body_whitespace(body, index + 1);
+            if let Some(argument) = body
+                .get(next)
+                .and_then(|parameter| operand(&parameter.text, true))
+            {
+                result.push(fresh(TokenKind::StringLiteral, stringify(&argument)));
+                placemarker = false;
+                index = next + 1;
+                continue;
             }
         }
         if token.kind == TokenKind::HashHash {
             while result
                 .last()
-                .is_some_and(|token| token.kind == TokenKind::Whitespace)
+                .is_some_and(|last| last.kind == TokenKind::Whitespace)
             {
                 result.pop();
             }
+            index = skip_body_whitespace(body, index + 1);
+            let Some(right) = body.get(index) else {
+                break;
+            };
             index += 1;
-            while index < definition.body.len()
-                && definition.body[index].kind == TokenKind::Whitespace
+            if right.text == "__VA_ARGS__"
+                && definition.is_variadic
+                && !placemarker
+                && result.last().is_some_and(|last| last.text == ",")
             {
-                index += 1;
-            }
-            if let Some(right) = definition.body.get(index) {
-                let right_text = parameters
-                    .iter()
-                    .position(|name| name == &right.text)
-                    .and_then(|argument_index| arguments.get(argument_index))
-                    .map(|argument| argument.iter().map(|token| token.text.as_str()).collect())
-                    .unwrap_or_else(|| right.text.clone());
-                if let Some(left) = result.last_mut() {
-                    left.text.push_str(&right_text);
-                    left.anchor = invocation;
+                let tail = operand(&right.text, true).unwrap_or_default();
+                if tail.is_empty() {
+                    result.pop();
+                } else {
+                    result.extend(tail);
                 }
-                index += 1;
+                continue;
             }
+            let right_tokens = operand(&right.text, true)
+                .unwrap_or_else(|| vec![fresh(right.kind.clone(), right.text.clone())]);
+            if right_tokens.is_empty() {
+                continue;
+            }
+            if placemarker {
+                result.extend(right_tokens);
+                placemarker = false;
+                continue;
+            }
+            let mut rest = right_tokens.into_iter();
+            if let Some(first) = rest.next() {
+                if let Some(left) = result.last_mut() {
+                    left.text.push_str(&first.text);
+                    left.anchor = invocation;
+                    if is_identifier(&left.text) {
+                        left.kind = TokenKind::Ident;
+                    }
+                } else {
+                    result.push(first);
+                }
+            }
+            result.extend(rest);
             continue;
         }
         if token.kind == TokenKind::Ident {
-            if token.text == "__VA_ARGS__" && definition.is_variadic {
-                for (argument_index, argument) in
-                    arguments.iter().skip(parameters.len()).enumerate()
-                {
-                    if argument_index > 0 {
-                        result.push(TracedToken {
-                            kind: TokenKind::Punct,
-                            text: ",".to_owned(),
-                            anchor: invocation,
-                            provenance: invocation_token.provenance.clone(),
-                        });
-                    }
-                    result.extend(argument.iter().cloned());
-                }
-                index += 1;
-                continue;
-            }
-            if let Some(argument_index) = parameters.iter().position(|name| name == &token.text) {
-                result.extend(arguments.get(argument_index).into_iter().flatten().cloned());
+            let raw = body
+                .get(skip_body_whitespace(body, index + 1))
+                .is_some_and(|next| next.kind == TokenKind::HashHash);
+            if let Some(argument) = operand(&token.text, raw) {
+                placemarker = raw && argument.is_empty();
+                result.extend(argument);
                 index += 1;
                 continue;
             }
         }
-        result.push(TracedToken {
-            kind: token.kind.clone(),
-            text: token.text.clone(),
-            anchor: invocation,
-            provenance: invocation_token.provenance.clone(),
-        });
+        if !is_blank(&token.kind) {
+            placemarker = false;
+        }
+        let (kind, text) = emitted(&token.kind, &token.text);
+        result.push(fresh(kind, text));
         index += 1;
     }
     result

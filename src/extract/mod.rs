@@ -808,21 +808,20 @@ impl<'a> ContractExtractor<'a> {
                 let variant_id =
                     ChildId::named(id, ChildRole::EnumVariant, &name.normalized).ok()?;
                 let value = match &enumerator.node.expression {
-                    Some(expression) => match eval_exact_integer_in_env(
-                        &expression.node,
-                        &enum_values,
-                    ) {
-                        Some(value) => {
-                            next_value = increment_exact_integer(value);
-                            EnumValue::Evaluated { value }
-                        }
-                        None => {
-                            next_value = None;
-                            EnumValue::Unevaluated {
-                                normalized_expression: self.text(expression.span)?,
+                    Some(expression) => {
+                        match eval_exact_integer_in_env(&expression.node, &enum_values) {
+                            Some(value) => {
+                                next_value = increment_exact_integer(value);
+                                EnumValue::Evaluated { value }
+                            }
+                            None => {
+                                next_value = None;
+                                EnumValue::Unevaluated {
+                                    normalized_expression: self.text(expression.span)?,
+                                }
                             }
                         }
-                    },
+                    }
                     None => match next_value {
                         Some(value) => {
                             next_value = increment_exact_integer(value);

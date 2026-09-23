@@ -883,6 +883,83 @@ fn a_macro_that_pastes_is_unsupported_without_rejecting_the_package() {
     }
 }
 
+/// glibc's `<math.h>` declares every function through this chain: an argument
+/// that is itself a macro call reaches `##` only after it is expanded.
+#[test]
+fn macro_arguments_are_prescanned_before_substitution() {
+    let fixture = Fixture::new(
+        "argument-prescan",
+        "#define PASTE(x,y) x ## y\n\
+         #define PRECNAME(name,r) PASTE(name,r)\n\
+         #define SIMD_acos\n\
+         #define SIMD(function) PASTE(SIMD_, function)\n\
+         #define DECL1(t,f,s,a) extern t PRECNAME(f,s) a\n\
+         #define DECL(t,f,s,a) SIMD(PRECNAME(f,s)) DECL1(t,f,s,a); DECL1(t,PASTE(__,f),s,a)\n\
+         DECL(double,acos,,(double x));\n",
+    );
+    let package = scan_headers(&fixture.config())
+        .expect("prescan scan")
+        .into_package();
+    for code in ["PARC-P0002", "PARC-E1201", "PARC-E2112"] {
+        assert!(
+            package
+                .diagnostics()
+                .iter()
+                .all(|diagnostic| diagnostic.code.as_str() != code),
+            "{code}: {:#?}",
+            package.diagnostics()
+        );
+    }
+    for name in ["acos", "__acos"] {
+        assert!(matches!(
+            named(&package, name).kind,
+            SourceDeclarationKind::Function(_)
+        ));
+    }
+}
+
+/// A comment is whitespace before any directive runs, so glibc's
+/// `#define __extension__ /* Ignore */` expands to nothing.
+#[test]
+fn a_comment_in_a_macro_body_is_whitespace() {
+    let fixture = Fixture::new(
+        "comment-in-macro",
+        "#define EXT /* Ignore */\n\
+         #define TWO (1 /* one */ + 1)\n\
+         EXT extern long long ll_fn(int values[TWO]);\n",
+    );
+    let package = scan_headers(&fixture.config())
+        .expect("comment macro scan")
+        .into_package();
+    assert_eq!(package.completeness(), &Completeness::Complete);
+    assert!(named(&package, "ll_fn").support.is_supported());
+}
+
+/// `##` joins one token on each side; an empty argument is a placemarker, and
+/// GNU `, ## __VA_ARGS__` drops the comma when the tail is empty.
+#[test]
+fn token_pasting_follows_placemarker_and_comma_elision_rules() {
+    let fixture = Fixture::new(
+        "paste-rules",
+        "#define CAT(a,b) a ## b\n\
+         #define JOIN3(a,b,c) a ## b ## c\n\
+         #define ARGS(...) (int first , ## __VA_ARGS__)\n\
+         int CAT(, left_empty)(void);\n\
+         int JOIN3(tri, , ple)(void);\n\
+         int elided ARGS();\n\
+         int kept ARGS(int second);\n",
+    );
+    let package = scan_headers(&fixture.config())
+        .expect("paste rules scan")
+        .into_package();
+    for (name, parameters) in [("left_empty", 0), ("triple", 0), ("elided", 1), ("kept", 2)] {
+        let SourceDeclarationKind::Function(function) = &named(&package, name).kind else {
+            panic!("{name} must lower as a function");
+        };
+        assert_eq!(function.parameters.len(), parameters, "{name}");
+    }
+}
+
 #[test]
 fn guarded_recursive_includes_complete_and_unguarded_cycles_hit_depth_budget() {
     let self_guarded = Fixture::new(
