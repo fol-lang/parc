@@ -816,7 +816,11 @@ impl<'a> ContractExtractor<'a> {
                     ChildId::named(id, ChildRole::EnumVariant, &name.normalized).ok()?;
                 let value = match &enumerator.node.expression {
                     Some(expression) => {
-                        match eval_exact_integer_in_env(&expression.node, &enum_values) {
+                        match eval_exact_integer_in_env(
+                            &expression.node,
+                            &enum_values,
+                            &self.context.sizes,
+                        ) {
                             Some(value) => {
                                 next_value = increment_exact_integer(value);
                                 EnumValue::Evaluated { value }

@@ -961,6 +961,46 @@ fn token_pasting_follows_placemarker_and_comma_elision_rules() {
     }
 }
 
+/// Shift and bitwise enumerators fold exactly while the result is what C
+/// computes; an overflow, an oversized shift, or a wrap stays unevaluated.
+#[test]
+fn binary_enumerators_fold_only_when_exact() {
+    let fixture = Fixture::new(
+        "binary-enumerators",
+        "enum flags { F_A = (1u << 0), F_B = (1 << 3), F_AB = F_A | F_B, \
+         F_AND = F_AB & 8, F_TOP = (1u << 31) };\n\
+         enum wide { W_SIGNED = 1 << 31, W_SHIFT = 1u << 32, W_WRAP = 0u - 1, \
+         W_MIXED = -1 | 1u };\n",
+    );
+    let package = scan_headers(&fixture.config())
+        .expect("binary enumerator scan")
+        .into_package();
+    let values = |name: &str| -> Vec<EnumValue> {
+        let SourceDeclarationKind::Enum(entry) = &named(&package, name).kind else {
+            panic!("{name} must lower as an enum");
+        };
+        entry
+            .variants
+            .iter()
+            .map(|variant| variant.value.clone())
+            .collect()
+    };
+    let evaluated = |value| EnumValue::Evaluated { value };
+    assert_eq!(
+        values("flags"),
+        [
+            evaluated(ExactInteger::unsigned(1)),
+            evaluated(ExactInteger::signed(8)),
+            evaluated(ExactInteger::unsigned(9)),
+            evaluated(ExactInteger::unsigned(8)),
+            evaluated(ExactInteger::unsigned(1 << 31)),
+        ]
+    );
+    assert!(values("wide")
+        .iter()
+        .all(|value| matches!(value, EnumValue::Unevaluated { .. })));
+}
+
 /// `sizeof` of a scalar or pointer in an array bound folds to the target data
 /// model's size; `sizeof` of a record or typedef name stays symbolic.
 #[test]

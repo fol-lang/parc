@@ -1043,6 +1043,7 @@ pub(crate) struct SizeOfTable {
     float: u64,
     double: u64,
     long_double: u64,
+    int_bits: u32,
 }
 
 impl SizeOfTable {
@@ -1050,6 +1051,7 @@ impl SizeOfTable {
         let char_bit = u64::from(model.char_bit.max(1));
         let bytes = |bits: u16| u64::from(bits) / char_bit;
         Self {
+            int_bits: u32::from(model.int_layout.storage_bits),
             bool: bytes(model.bool_layout.storage_bits),
             char: bytes(model.char_layout.storage_bits),
             short: bytes(model.short_layout.storage_bits),
@@ -1195,11 +1197,17 @@ pub(crate) fn eval_const_expr(expr: &Expression, sizes: &SizeOfTable) -> Option<
 pub(crate) fn eval_exact_integer_in_env(
     expr: &Expression,
     env: &std::collections::BTreeMap<String, ExactInteger>,
+    sizes: &SizeOfTable,
 ) -> Option<ExactInteger> {
     if let Expression::Identifier(identifier) = expr {
         return env.get(&identifier.node.name).copied();
     }
     match expr {
+        Expression::BinaryOperator(binary) => {
+            let lhs = eval_exact_integer_in_env(&binary.node.lhs.node, env, sizes)?;
+            let rhs = eval_exact_integer_in_env(&binary.node.rhs.node, env, sizes)?;
+            eval_exact_binary(binary.node.operator.node, lhs, rhs, sizes.int_bits)
+        }
         Expression::Constant(constant) => match &constant.node {
             Constant::Integer(integer) if !integer.suffix.imaginary => {
                 let radix = match integer.base {
@@ -1218,7 +1226,7 @@ pub(crate) fn eval_exact_integer_in_env(
             _ => None,
         },
         Expression::UnaryOperator(unary) => {
-            let value = eval_exact_integer_in_env(&unary.node.operand.node, env)?;
+            let value = eval_exact_integer_in_env(&unary.node.operand.node, env, sizes)?;
             match unary.node.operator.node {
                 UnaryOperator::Plus => Some(value),
                 UnaryOperator::Minus => value
@@ -1229,5 +1237,54 @@ pub(crate) fn eval_exact_integer_in_env(
             }
         }
         _ => None,
+    }
+}
+
+/// A binary enumerator expression -- `(1u << 3)`, `LOCAL | REMOTE` -- whose
+/// mathematical value is provably the value C computes.
+///
+/// Operands are promoted to at least `int`, so a result inside `int` (signed)
+/// or `unsigned int` (unsigned) is the C result at every wider type as well.
+/// Outside that range it is an overflow, a wrap, or a width PARC would have to
+/// guess, and it stays unevaluated.
+fn eval_exact_binary(
+    operator: BinaryOperator,
+    lhs: ExactInteger,
+    rhs: ExactInteger,
+    int_bits: u32,
+) -> Option<ExactInteger> {
+    let value = |exact: ExactInteger| match exact {
+        ExactInteger::Signed { value } => Some(value),
+        ExactInteger::Unsigned { value } => i128::try_from(value).ok(),
+    };
+    let is_unsigned = |exact: ExactInteger| matches!(exact, ExactInteger::Unsigned { .. });
+    let (left, right) = (value(lhs)?, value(rhs)?);
+    let shift = u32::try_from(right).ok().filter(|shift| *shift < int_bits);
+    let unsigned = match operator {
+        BinaryOperator::ShiftLeft | BinaryOperator::ShiftRight => is_unsigned(lhs),
+        _ => is_unsigned(lhs) || is_unsigned(rhs),
+    };
+    if unsigned && (left < 0 || right < 0) {
+        return None;
+    }
+    let result = match operator {
+        BinaryOperator::ShiftLeft if left >= 0 => left.checked_shl(shift?)?,
+        BinaryOperator::ShiftRight if left >= 0 => left >> shift?,
+        BinaryOperator::BitwiseOr => left | right,
+        BinaryOperator::BitwiseAnd => left & right,
+        BinaryOperator::BitwiseXor => left ^ right,
+        BinaryOperator::Plus => left.checked_add(right)?,
+        BinaryOperator::Minus => left.checked_sub(right)?,
+        BinaryOperator::Multiply => left.checked_mul(right)?,
+        _ => return None,
+    };
+    if unsigned {
+        let result = u128::try_from(result).ok()?;
+        (result >> int_bits == 0).then_some(ExactInteger::unsigned(result))
+    } else {
+        let limit = 1_i128.checked_shl(int_bits.checked_sub(1)?)?;
+        (-limit..limit)
+            .contains(&result)
+            .then_some(ExactInteger::signed(result))
     }
 }
