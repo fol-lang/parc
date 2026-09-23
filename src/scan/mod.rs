@@ -232,7 +232,7 @@ pub fn scan_headers(config: &ScanConfig) -> Result<ScanReport, ScanError> {
                 target: config.target.fingerprint(),
             });
         }
-        for issue in remap_issues {
+        for (issue, declaration) in remap_issues {
             diagnostics.push(SourceDiagnostic {
                 code: diagnostic_code(issue.code),
                 stage: DiagnosticStage::Preprocess,
@@ -241,7 +241,7 @@ pub fn scan_headers(config: &ScanConfig) -> Result<ScanReport, ScanError> {
                 message: issue.message,
                 range: issue.range,
                 related: Vec::new(),
-                declaration: None,
+                declaration,
                 target: config.target.fingerprint(),
             });
         }
@@ -370,9 +370,13 @@ fn remap_extraction(
     diagnostics: &mut [SourceDiagnostic],
     trace: &traced::TracedPreprocessed,
     generated_file: FileId,
-) -> Vec<traced::TraceIssue> {
+) -> Vec<(traced::TraceIssue, Option<DeclarationId>)> {
     let mut issues = Vec::new();
+    // Each gap met while remapping a declaration is that declaration's, so it
+    // blocks only a selection that reaches it.
+    let mut owners = Vec::new();
     for declaration in declarations {
+        let mut unmapped = false;
         for occurrence in &mut declaration.occurrences {
             if occurrence.range.file != generated_file {
                 continue;
@@ -406,7 +410,18 @@ fn remap_extraction(
                 );
             } else {
                 issues.push(provenance_gap(generated_range, "declaration occurrence"));
+                unmapped = true;
             }
+        }
+        // A declaration read from no single original source is not one a
+        // caller may select, though its neighbours still are.
+        if unmapped && declaration.support.is_supported() {
+            declaration.support = SupportStatus::Partial {
+                code: diagnostic_code("PARC-P2000"),
+                reason: "declaration occurrence could not be mapped to one exact original-source \
+                         provenance"
+                    .to_owned(),
+            };
         }
         declaration
             .occurrences
@@ -456,6 +471,7 @@ fn remap_extraction(
             | SourceDeclarationKind::Variable(_)
             | SourceDeclarationKind::Unsupported(_) => {}
         }
+        owners.resize(issues.len(), Some(declaration.id));
     }
     for diagnostic in diagnostics {
         if let Some(range) = diagnostic.range {
@@ -477,7 +493,8 @@ fn remap_extraction(
             }
         }
     }
-    issues
+    owners.resize(issues.len(), None);
+    issues.into_iter().zip(owners).collect()
 }
 
 /// A child is remapped only into an occurrence of its owner. An enum whose

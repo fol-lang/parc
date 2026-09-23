@@ -676,7 +676,8 @@ fn unsupported_directives_pragmas_line_markers_and_midline_hash_fail_closed() {
 /// FreeType's error list: an enum opened by one macro, closed by another, and
 /// filled by a file `#include`d in its body. The owner spans two files and has
 /// no single source range, so its enumerators keep ranges it contains rather
-/// than breaking the package contract.
+/// than breaking the package contract; the gap is the enum's own, so a
+/// neighbour selected without it still completes and the enum cannot be.
 #[test]
 fn an_enum_whose_body_includes_its_enumerators_stays_within_contract() {
     let fixture = Fixture::new(
@@ -694,10 +695,24 @@ fn an_enum_whose_body_includes_its_enumerators_stays_within_contract() {
         "DEF(ERR_OK, 0)\nDEF(ERR_BAD, 1)\n",
     )
     .expect("write error list");
-    let package = scan_headers(&fixture.config())
-        .expect("an enum filled by an include must not violate the contract")
-        .into_package();
-    assert!(named(&package, "after_fn").support.is_supported());
+    let report = scan_headers(&fixture.config())
+        .expect("an enum filled by an include must not violate the contract");
+    let neighbour = named(report.package(), "after_fn").id;
+    let enumeration = report
+        .package()
+        .declarations()
+        .iter()
+        .find(|declaration| matches!(declaration.kind, SourceDeclarationKind::Enum(_)))
+        .expect("the error enum")
+        .clone();
+    assert!(!enumeration.support.is_supported());
+    report
+        .clone()
+        .into_complete(&Selection::only([neighbour]).expect("neighbour root"))
+        .expect("a neighbour of the unmappable enum still completes");
+    assert!(report
+        .into_complete(&Selection::only([enumeration.id]).expect("enum root"))
+        .is_err());
 }
 
 /// `#include MACRO` expands the operand and includes the header name it
