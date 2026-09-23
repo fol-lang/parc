@@ -1044,6 +1044,7 @@ pub(crate) struct SizeOfTable {
     double: u64,
     long_double: u64,
     int_bits: u32,
+    char_bit: u64,
 }
 
 impl SizeOfTable {
@@ -1052,6 +1053,7 @@ impl SizeOfTable {
         let bytes = |bits: u16| u64::from(bits) / char_bit;
         Self {
             int_bits: u32::from(model.int_layout.storage_bits),
+            char_bit,
             bool: bytes(model.bool_layout.storage_bits),
             char: bytes(model.char_layout.storage_bits),
             short: bytes(model.short_layout.storage_bits),
@@ -1063,6 +1065,29 @@ impl SizeOfTable {
             double: bytes(model.double_layout.scalar.storage_bits),
             long_double: bytes(model.long_double_layout.scalar.storage_bits),
         }
+    }
+
+    /// An integer type's width in bits and whether it is signed. A plain
+    /// `char`'s signedness is the target's choice, and `__int128`/`_BitInt`
+    /// are outside the exact subset, so those stay unsized.
+    pub(crate) fn integer_range(&self, integer: &CIntegerType) -> Option<(u32, bool)> {
+        let signed = |signedness: &Signedness| *signedness == Signedness::Signed;
+        let (bytes, signed) = match integer {
+            CIntegerType::Char {
+                signedness: CharTypeSignedness::Signed,
+            } => (self.char, true),
+            CIntegerType::Char {
+                signedness: CharTypeSignedness::Unsigned,
+            } => (self.char, false),
+            CIntegerType::Short { signedness } => (self.short, signed(signedness)),
+            CIntegerType::Int { signedness } => (self.int, signed(signedness)),
+            CIntegerType::Long { signedness } => (self.long, signed(signedness)),
+            CIntegerType::LongLong { signedness } => (self.long_long, signed(signedness)),
+            _ => return None,
+        };
+        u32::try_from(bytes * self.char_bit)
+            .ok()
+            .map(|bits| (bits, signed))
     }
 
     /// `sizeof(type-name)` for an arithmetic type or any pointer. Records,
@@ -1198,14 +1223,15 @@ pub(crate) fn eval_exact_integer_in_env(
     expr: &Expression,
     env: &std::collections::BTreeMap<String, ExactInteger>,
     sizes: &SizeOfTable,
+    cast_range: &dyn Fn(&TypeName) -> Option<(u32, bool)>,
 ) -> Option<ExactInteger> {
     if let Expression::Identifier(identifier) = expr {
         return env.get(&identifier.node.name).copied();
     }
     match expr {
         Expression::BinaryOperator(binary) => {
-            let lhs = eval_exact_integer_in_env(&binary.node.lhs.node, env, sizes)?;
-            let rhs = eval_exact_integer_in_env(&binary.node.rhs.node, env, sizes)?;
+            let lhs = eval_exact_integer_in_env(&binary.node.lhs.node, env, sizes, cast_range)?;
+            let rhs = eval_exact_integer_in_env(&binary.node.rhs.node, env, sizes, cast_range)?;
             eval_exact_binary(binary.node.operator.node, lhs, rhs, sizes.int_bits)
         }
         Expression::Constant(constant) => match &constant.node {
@@ -1223,10 +1249,43 @@ pub(crate) fn eval_exact_integer_in_env(
                     i128::try_from(magnitude).ok().map(ExactInteger::signed)
                 }
             }
+            // A plain one-character constant is that character's code, an
+            // `int`; escapes and multi-character constants stay unevaluated.
+            Constant::Character(text) => {
+                let inner = text.strip_prefix('\'')?.strip_suffix('\'')?;
+                let mut chars = inner.chars();
+                let character = chars.next()?;
+                (chars.next().is_none()
+                    && character.is_ascii()
+                    && !matches!(character, '\\' | '\''))
+                .then(|| ExactInteger::signed(i128::from(u32::from(character))))
+            }
             _ => None,
         },
+        // A cast to an integer type the value already fits leaves it unchanged
+        // but for its signedness; one that would wrap or narrow stays
+        // unevaluated. FreeType's `FT_ENC_TAG` is `((FT_UInt32)('u') << 24) | ...`.
+        Expression::Cast(cast) => {
+            let value =
+                eval_exact_integer_in_env(&cast.node.expression.node, env, sizes, cast_range)?;
+            let value = match value {
+                ExactInteger::Signed { value } => value,
+                ExactInteger::Unsigned { value } => i128::try_from(value).ok()?,
+            };
+            let (bits, signed) = cast_range(&cast.node.type_name.node)?;
+            if signed {
+                let limit = 1_i128.checked_shl(bits.checked_sub(1)?)?;
+                (-limit..limit)
+                    .contains(&value)
+                    .then_some(ExactInteger::signed(value))
+            } else {
+                let value = u128::try_from(value).ok()?;
+                (bits >= 128 || value >> bits == 0).then_some(ExactInteger::unsigned(value))
+            }
+        }
         Expression::UnaryOperator(unary) => {
-            let value = eval_exact_integer_in_env(&unary.node.operand.node, env, sizes)?;
+            let value =
+                eval_exact_integer_in_env(&unary.node.operand.node, env, sizes, cast_range)?;
             match unary.node.operator.node {
                 UnaryOperator::Plus => Some(value),
                 UnaryOperator::Minus => value

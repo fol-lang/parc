@@ -1022,6 +1022,48 @@ fn token_pasting_follows_placemarker_and_comma_elision_rules() {
     }
 }
 
+/// FreeType's `FT_ENC_TAG`: character constants cast through a typedef and
+/// shifted into a tag. A cast that would narrow, and an escaped character,
+/// stay unevaluated.
+#[test]
+fn character_tags_cast_through_typedefs_fold_exactly() {
+    let fixture = Fixture::new(
+        "character-tags",
+        "typedef unsigned int u32t;\n\
+         #define TAG(v, a, b, c, d) v = (((u32t)(a) << 24) | ((u32t)(b) << 16) | \
+         ((u32t)(c) << 8) | (u32t)(d))\n\
+         enum enc { TAG(ENC_NONE, 0, 0, 0, 0), TAG(ENC_UNIC, 'u', 'n', 'i', 'c') };\n\
+         enum odd { ODD_NARROW = (unsigned char)300, ODD_ESCAPE = '\\n' };\n",
+    );
+    let package = scan_headers(&fixture.config())
+        .expect("character tag scan")
+        .into_package();
+    let values = |name: &str| -> Vec<EnumValue> {
+        let SourceDeclarationKind::Enum(entry) = &named(&package, name).kind else {
+            panic!("{name} must lower as an enum");
+        };
+        entry
+            .variants
+            .iter()
+            .map(|variant| variant.value.clone())
+            .collect()
+    };
+    assert_eq!(
+        values("enc"),
+        [
+            EnumValue::Evaluated {
+                value: ExactInteger::unsigned(0)
+            },
+            EnumValue::Evaluated {
+                value: ExactInteger::unsigned(0x756e_6963)
+            },
+        ]
+    );
+    assert!(values("odd")
+        .iter()
+        .all(|value| matches!(value, EnumValue::Unevaluated { .. })));
+}
+
 /// Shift and bitwise enumerators fold exactly while the result is what C
 /// computes; an overflow, an oversized shift, or a wrap stays unevaluated.
 #[test]

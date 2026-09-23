@@ -802,6 +802,40 @@ impl<'a> ContractExtractor<'a> {
         // Each evaluated enumerator by its source spelling, so a later one can
         // be defined as an alias of it -- `VK_ERROR_FOO_EXT = VK_ERROR_FOO`.
         let mut enum_values = std::collections::BTreeMap::<String, ExactInteger>::new();
+        // A cast's target, through the typedefs already lowered above it, as
+        // the integer range the data model gives it.
+        let resolver = TypeResolver::new(
+            &self.ordinary,
+            &self.tags,
+            &self.anonymous_tags,
+            &self.pointer_aliases,
+            self.context.source,
+            self.context.int128_supported,
+            self.context.sizes,
+        );
+        let cast_range = |name: &TypeName| {
+            let mut ty = resolver.field_type(
+                &name.specifiers,
+                name.declarator.as_ref().map(|declarator| &declarator.node),
+            );
+            for _ in 0..64 {
+                match &ty.kind {
+                    CTypeKind::Integer(integer) => {
+                        return self.context.sizes.integer_range(integer);
+                    }
+                    CTypeKind::AliasRef(alias) => {
+                        match self.drafts.get(alias).and_then(|draft| draft.kind.as_ref()) {
+                            Some(SourceDeclarationKind::TypeAlias(target)) => {
+                                ty = target.target.clone();
+                            }
+                            _ => return None,
+                        }
+                    }
+                    _ => return None,
+                }
+            }
+            None
+        };
         let variants = enumeration
             .enumerators
             .iter()
@@ -820,6 +854,7 @@ impl<'a> ContractExtractor<'a> {
                             &expression.node,
                             &enum_values,
                             &self.context.sizes,
+                            &cast_range,
                         ) {
                             Some(value) => {
                                 next_value = increment_exact_integer(value);
