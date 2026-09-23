@@ -13,6 +13,7 @@ use crate::contract::*;
 use crate::preprocess::{Lexer, TokenKind};
 use crate::span::{Node, Span};
 
+pub(crate) use types::SizeOfTable;
 use types::{
     code, declarator_name, declarator_name_span, eval_const_expr, eval_exact_integer_in_env,
     is_function_declarator, TypeResolver,
@@ -23,6 +24,7 @@ pub(crate) struct ExtractionContext<'a> {
     pub generated_file: FileId,
     pub target: TargetFingerprint,
     pub int128_supported: bool,
+    pub sizes: SizeOfTable,
     pub default_visibility: Visibility,
 }
 
@@ -354,6 +356,7 @@ impl<'a> ContractExtractor<'a> {
                 &self.pointer_aliases,
                 self.context.source,
                 self.context.int128_supported,
+                self.context.sizes,
             );
             let kind = if is_typedef {
                 SourceDeclarationKind::TypeAlias(SourceTypeAlias {
@@ -423,6 +426,7 @@ impl<'a> ContractExtractor<'a> {
             &self.pointer_aliases,
             self.context.source,
             self.context.int128_supported,
+            self.context.sizes,
         );
         let kind = self.lower_function_kind(
             &resolver,
@@ -586,6 +590,7 @@ impl<'a> ContractExtractor<'a> {
                         &self.pointer_aliases,
                         self.context.source,
                         self.context.int128_supported,
+                        self.context.sizes,
                     );
                     if field.node.declarators.is_empty() {
                         if let Some(value) = self.lower_field(
@@ -706,22 +711,24 @@ impl<'a> ContractExtractor<'a> {
         let bit_width = match bit_width {
             Some(expression) => {
                 let spelling = self.text(expression.span)?;
-                Some(match eval_const_expr(&expression.node) {
-                    Some(value) if value >= 0 => match u64::try_from(value) {
-                        Ok(bits) => BitWidth::Known { bits },
-                        Err(_) => BitWidth::Invalid {
+                Some(
+                    match eval_const_expr(&expression.node, &self.context.sizes) {
+                        Some(value) if value >= 0 => match u64::try_from(value) {
+                            Ok(bits) => BitWidth::Known { bits },
+                            Err(_) => BitWidth::Invalid {
+                                spelling,
+                                diagnostic: code("PARC-E1207"),
+                            },
+                        },
+                        Some(_) => BitWidth::Invalid {
                             spelling,
                             diagnostic: code("PARC-E1207"),
                         },
+                        None => BitWidth::Expression {
+                            normalized_expression: spelling,
+                        },
                     },
-                    Some(_) => BitWidth::Invalid {
-                        spelling,
-                        diagnostic: code("PARC-E1207"),
-                    },
-                    None => BitWidth::Expression {
-                        normalized_expression: spelling,
-                    },
-                })
+                )
             }
             None => None,
         };

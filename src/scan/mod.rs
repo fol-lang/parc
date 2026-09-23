@@ -22,7 +22,7 @@ use std::time::{Duration, Instant};
 use thiserror::Error;
 
 use crate::contract::*;
-use crate::extract::{extract_contract, ExtractionContext};
+use crate::extract::{extract_contract, ExtractionContext, SizeOfTable};
 
 const GENERATED_PROVENANCE_CODE: &str = "PARC-P0001";
 const RECOVERY_CODE: &str = "PARC-P0002";
@@ -196,6 +196,7 @@ pub fn scan_headers(config: &ScanConfig) -> Result<ScanReport, ScanError> {
             generated_file: generated_id,
             target: config.target.fingerprint(),
             int128_supported: config.target.c_data_model().int128_layout.is_some(),
+            sizes: SizeOfTable::from_data_model(config.target.c_data_model()),
             default_visibility: target_default_visibility(&config.target),
         },
     );

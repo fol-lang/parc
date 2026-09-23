@@ -2,10 +2,10 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::ast::*;
 use crate::contract::{
-    ArrayBound, ArrayMinimumBound, BitIntWidth, CFloatingType, CFunctionParameter, CFunctionType,
-    CIntegerType, CType, CTypeKind, CallingConvention, CharTypeSignedness, DeclarationId,
-    DiagnosticCode, ExactInteger, FunctionPrototype, Nullability, Signedness, SupportStatus,
-    Ts18661Format, TypeQualifiers, UnsupportedTypeCategory,
+    ArrayBound, ArrayMinimumBound, BitIntWidth, CDataModel, CFloatingType, CFunctionParameter,
+    CFunctionType, CIntegerType, CType, CTypeKind, CallingConvention, CharTypeSignedness,
+    DeclarationId, DiagnosticCode, ExactInteger, FunctionPrototype, Nullability, Signedness,
+    SupportStatus, Ts18661Format, TypeQualifiers, UnsupportedTypeCategory,
 };
 use crate::span::{Node, Span};
 
@@ -16,6 +16,7 @@ pub(crate) struct TypeResolver<'a> {
     pointer_aliases: &'a BTreeSet<DeclarationId>,
     source: &'a str,
     int128_supported: bool,
+    sizes: SizeOfTable,
 }
 
 pub(crate) struct LoweredParameter {
@@ -39,6 +40,7 @@ impl<'a> TypeResolver<'a> {
         pointer_aliases: &'a BTreeSet<DeclarationId>,
         source: &'a str,
         int128_supported: bool,
+        sizes: SizeOfTable,
     ) -> Self {
         Self {
             ordinary,
@@ -47,6 +49,7 @@ impl<'a> TypeResolver<'a> {
             pointer_aliases,
             source,
             int128_supported,
+            sizes,
         }
     }
 
@@ -172,6 +175,7 @@ impl<'a> TypeResolver<'a> {
                 }
                 DerivedDeclarator::Array(array) => {
                     return_type = array_type(
+                        &self.sizes,
                         self.source,
                         return_type,
                         &array.node.size,
@@ -270,6 +274,7 @@ impl<'a> TypeResolver<'a> {
                 DerivedDeclarator::Pointer(_) => {}
                 DerivedDeclarator::Array(array) => {
                     ty = array_type(
+                        &self.sizes,
                         self.source,
                         ty,
                         &array.node.size,
@@ -477,7 +482,7 @@ impl<'a> TypeResolver<'a> {
                     );
                 }
                 TypeSpecifier::BitInt(expression) => {
-                    let width = match eval_const_expr(&expression.node) {
+                    let width = match eval_const_expr(&expression.node, &self.sizes) {
                         Some(value) if value > 0 => match u64::try_from(value) {
                             Ok(bits) => BitIntWidth::Known { bits },
                             Err(_) => {
@@ -775,6 +780,7 @@ fn pointer(inner: CType, values: (TypeQualifiers, Nullability, bool, bool)) -> C
 }
 
 fn array_type(
+    sizes: &SizeOfTable,
     source: &str,
     element: CType,
     size: &ArraySize,
@@ -798,7 +804,7 @@ fn array_type(
         ),
         ArraySize::VariableExpression(expression) => {
             let spelling = span_text(source, expression.span, "array bound expression");
-            let (bound, support) = match eval_const_expr(&expression.node) {
+            let (bound, support) = match eval_const_expr(&expression.node, sizes) {
                 Some(value) if value > 0 => match u64::try_from(value) {
                     Ok(elements) => (ArrayBound::Fixed { elements }, SupportStatus::Supported),
                     Err(_) => (
@@ -833,7 +839,7 @@ fn array_type(
         }
         ArraySize::StaticExpression(expression) if parameter_context => {
             let spelling = span_text(source, expression.span, "array bound expression");
-            let (bound, support) = match eval_const_expr(&expression.node) {
+            let (bound, support) = match eval_const_expr(&expression.node, sizes) {
                 Some(value) if value > 0 => match u64::try_from(value) {
                     Ok(elements) => (
                         ArrayBound::StaticMinimum {
@@ -1023,9 +1029,100 @@ pub(crate) fn code(value: &str) -> DiagnosticCode {
     DiagnosticCode::new(value).expect("static diagnostic code")
 }
 
+/// The target's scalar sizes in bytes, so `sizeof` in a constant expression
+/// is the certified data model's answer rather than the host's.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct SizeOfTable {
+    bool: u64,
+    char: u64,
+    short: u64,
+    int: u64,
+    long: u64,
+    long_long: u64,
+    pointer: u64,
+    float: u64,
+    double: u64,
+    long_double: u64,
+}
+
+impl SizeOfTable {
+    pub(crate) fn from_data_model(model: &CDataModel) -> Self {
+        let char_bit = u64::from(model.char_bit.max(1));
+        let bytes = |bits: u16| u64::from(bits) / char_bit;
+        Self {
+            bool: bytes(model.bool_layout.storage_bits),
+            char: bytes(model.char_layout.storage_bits),
+            short: bytes(model.short_layout.storage_bits),
+            int: bytes(model.int_layout.storage_bits),
+            long: bytes(model.long_layout.storage_bits),
+            long_long: bytes(model.long_long_layout.storage_bits),
+            pointer: bytes(model.pointer_layout.storage_bits),
+            float: bytes(model.float_layout.scalar.storage_bits),
+            double: bytes(model.double_layout.scalar.storage_bits),
+            long_double: bytes(model.long_double_layout.scalar.storage_bits),
+        }
+    }
+
+    /// `sizeof(type-name)` for an arithmetic type or any pointer. Records,
+    /// arrays, functions and typedef names stay unevaluated: an array bound
+    /// left symbolic is refused, while a wrong one would be an ABI error.
+    fn type_name(&self, name: &TypeName) -> Option<u64> {
+        if let Some(declarator) = &name.declarator {
+            if declarator.node.derived.is_empty() {
+                return self.specifiers(&name.specifiers);
+            }
+            let all_pointers = declarator.node.derived.iter().all(|derived| {
+                matches!(
+                    derived.node,
+                    DerivedDeclarator::Pointer(_) | DerivedDeclarator::Block(_)
+                )
+            });
+            return all_pointers.then_some(self.pointer);
+        }
+        self.specifiers(&name.specifiers)
+    }
+
+    fn specifiers(&self, specifiers: &[Node<SpecifierQualifier>]) -> Option<u64> {
+        let (mut longs, mut base) = (0, None::<&TypeSpecifier>);
+        let mut sign_only = false;
+        for specifier in specifiers {
+            let SpecifierQualifier::TypeSpecifier(specifier) = &specifier.node else {
+                continue;
+            };
+            match &specifier.node {
+                TypeSpecifier::Long => longs += 1,
+                TypeSpecifier::Signed | TypeSpecifier::Unsigned => sign_only = true,
+                TypeSpecifier::Int if base.is_none() => base = Some(&specifier.node),
+                TypeSpecifier::Int => {}
+                other @ (TypeSpecifier::Char
+                | TypeSpecifier::Short
+                | TypeSpecifier::Float
+                | TypeSpecifier::Double
+                | TypeSpecifier::Bool) => base = Some(other),
+                _ => return None,
+            }
+        }
+        match (base, longs) {
+            (Some(TypeSpecifier::Bool), 0) => Some(self.bool),
+            (Some(TypeSpecifier::Char), 0) => Some(self.char),
+            (Some(TypeSpecifier::Short), 0) => Some(self.short),
+            (Some(TypeSpecifier::Float), 0) => Some(self.float),
+            (Some(TypeSpecifier::Double), 0) => Some(self.double),
+            (Some(TypeSpecifier::Double), 1) => Some(self.long_double),
+            (Some(TypeSpecifier::Int) | None, 1) => Some(self.long),
+            (Some(TypeSpecifier::Int) | None, 2) => Some(self.long_long),
+            (Some(TypeSpecifier::Int), 0) => Some(self.int),
+            (None, 0) if sign_only => Some(self.int),
+            _ => None,
+        }
+    }
+}
+
 /// Best-effort evaluation that never substitutes a value when evaluation fails.
-pub(crate) fn eval_const_expr(expr: &Expression) -> Option<i128> {
+pub(crate) fn eval_const_expr(expr: &Expression, sizes: &SizeOfTable) -> Option<i128> {
+    let eval = |expr: &Expression| eval_const_expr(expr, sizes);
     match expr {
+        Expression::SizeOfTy(size_of) => sizes.type_name(&size_of.node.0.node).map(i128::from),
         Expression::Constant(constant) => match &constant.node {
             Constant::Integer(integer) => {
                 let number = integer.number.as_ref();
@@ -1039,7 +1136,7 @@ pub(crate) fn eval_const_expr(expr: &Expression) -> Option<i128> {
             _ => None,
         },
         Expression::UnaryOperator(unary) => {
-            let inner = eval_const_expr(&unary.node.operand.node)?;
+            let inner = eval(&unary.node.operand.node)?;
             match unary.node.operator.node {
                 UnaryOperator::Minus => inner.checked_neg(),
                 UnaryOperator::Plus => Some(inner),
@@ -1049,8 +1146,8 @@ pub(crate) fn eval_const_expr(expr: &Expression) -> Option<i128> {
             }
         }
         Expression::BinaryOperator(binary) => {
-            let lhs = eval_const_expr(&binary.node.lhs.node)?;
-            let rhs = eval_const_expr(&binary.node.rhs.node)?;
+            let lhs = eval(&binary.node.lhs.node)?;
+            let rhs = eval(&binary.node.rhs.node)?;
             match binary.node.operator.node {
                 BinaryOperator::Plus => lhs.checked_add(rhs),
                 BinaryOperator::Minus => lhs.checked_sub(rhs),
@@ -1078,14 +1175,14 @@ pub(crate) fn eval_const_expr(expr: &Expression) -> Option<i128> {
             }
         }
         Expression::Conditional(conditional) => {
-            if eval_const_expr(&conditional.node.condition.node)? != 0 {
-                eval_const_expr(&conditional.node.then_expression.node)
+            if eval(&conditional.node.condition.node)? != 0 {
+                eval(&conditional.node.then_expression.node)
             } else {
-                eval_const_expr(&conditional.node.else_expression.node)
+                eval(&conditional.node.else_expression.node)
             }
         }
-        Expression::Cast(cast) => eval_const_expr(&cast.node.expression.node),
-        Expression::Comma(parts) => parts.last().and_then(|part| eval_const_expr(&part.node)),
+        Expression::Cast(cast) => eval(&cast.node.expression.node),
+        Expression::Comma(parts) => parts.last().and_then(|part| eval(&part.node)),
         _ => None,
     }
 }

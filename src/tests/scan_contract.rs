@@ -343,6 +343,7 @@ fn nameless_top_level_declarator_is_not_silently_discarded() {
                 .expect("generated file ID"),
             target: test_target().fingerprint(),
             int128_supported: true,
+            sizes: crate::extract::SizeOfTable::from_data_model(test_target().c_data_model()),
             default_visibility: Visibility::Unspecified,
         },
     );
@@ -958,6 +959,45 @@ fn token_pasting_follows_placemarker_and_comma_elision_rules() {
         };
         assert_eq!(function.parameters.len(), parameters, "{name}");
     }
+}
+
+/// `sizeof` of a scalar or pointer in an array bound folds to the target data
+/// model's size; `sizeof` of a record or typedef name stays symbolic.
+#[test]
+fn sizeof_scalars_and_pointers_fold_in_array_bounds() {
+    let fixture = Fixture::new(
+        "sizeof-bounds",
+        "typedef int word;\n\
+         struct ev { unsigned char padding[sizeof(void *) <= 8 ? 56 : \
+         sizeof(void *) == 16 ? 64 : 3 * sizeof(void *)]; };\n\
+         struct io { char unused[15 * sizeof (int) - 5 * sizeof (void *)]; };\n\
+         struct mix { char a[sizeof(long long) + sizeof(unsigned) + sizeof(char **)]; \
+         char b[sizeof(long double) + sizeof(short int)]; };\n\
+         struct opaque { char c[sizeof(word)]; char d[sizeof(struct ev)]; };\n",
+    );
+    let package = scan_headers(&fixture.config())
+        .expect("sizeof bound scan")
+        .into_package();
+    let bounds = |name: &str| -> Vec<ArrayBound> {
+        let SourceDeclarationKind::Record(record) = &named(&package, name).kind else {
+            panic!("{name} must lower as a record");
+        };
+        record
+            .fields
+            .iter()
+            .map(|field| match &field.ty.kind {
+                CTypeKind::Array { bound, .. } => bound.clone(),
+                other => panic!("{name} field must be an array, got {other:?}"),
+            })
+            .collect()
+    };
+    let fixed = |elements| ArrayBound::Fixed { elements };
+    assert_eq!(bounds("ev"), [fixed(56)]);
+    assert_eq!(bounds("io"), [fixed(20)]);
+    assert_eq!(bounds("mix"), [fixed(20), fixed(18)]);
+    assert!(bounds("opaque")
+        .iter()
+        .all(|bound| matches!(bound, ArrayBound::Variable { .. })));
 }
 
 #[test]
