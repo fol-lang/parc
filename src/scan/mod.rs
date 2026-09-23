@@ -209,6 +209,13 @@ pub fn scan_headers(config: &ScanConfig) -> Result<ScanReport, ScanError> {
     let mut diagnostics = extracted.diagnostics;
     let mut macros = Vec::new();
     if let Some(trace) = &traced {
+        mark_packed_records(
+            &mut extracted.declarations,
+            &mut diagnostics,
+            &trace.packed_ranges,
+            generated_id,
+            config.target.fingerprint(),
+        );
         let remap_issues = remap_extraction(
             &mut extracted.declarations,
             &mut diagnostics,
@@ -363,6 +370,52 @@ pub fn scan_headers(config: &ScanConfig) -> Result<ScanReport, ScanError> {
         }
     }
     Ok(ScanReport::new(SourcePackage::try_new(input)?))
+}
+
+/// Refuse each record defined while `#pragma pack` was active, and only those.
+///
+/// Packing changes nothing but the layout of the records it spans, so a
+/// routine that never reaches one is not refused over it -- libsodium packs its
+/// hash states, and a caller asking only for the one-shot hash names none.
+fn mark_packed_records(
+    declarations: &mut [SourceDeclaration],
+    diagnostics: &mut Vec<SourceDiagnostic>,
+    packed_ranges: &[(usize, usize)],
+    generated_file: FileId,
+    target: TargetFingerprint,
+) {
+    for declaration in declarations {
+        if !matches!(declaration.kind, SourceDeclarationKind::Record(_)) {
+            continue;
+        }
+        let packed = declaration.occurrences.iter().find(|occurrence| {
+            occurrence.is_definition
+                && occurrence.range.file == generated_file
+                && packed_ranges.iter().any(|(start, end)| {
+                    occurrence.range.start < *end as u64 && (*start as u64) < occurrence.range.end
+                })
+        });
+        let Some(occurrence) = packed else {
+            continue;
+        };
+        let reason = "record is defined while #pragma pack is active, and its packed layout is \
+                      not modeled";
+        diagnostics.push(SourceDiagnostic {
+            code: diagnostic_code("PARC-E2104"),
+            stage: DiagnosticStage::Extract,
+            severity: Severity::Error,
+            completeness_impact: DiagnosticCompletenessImpact::ForcesPartial,
+            message: reason.to_owned(),
+            range: Some(occurrence.range),
+            related: Vec::new(),
+            declaration: Some(declaration.id),
+            target,
+        });
+        declaration.support = SupportStatus::Unsupported {
+            code: diagnostic_code("PARC-E2104"),
+            reason: reason.to_owned(),
+        };
+    }
 }
 
 fn remap_extraction(

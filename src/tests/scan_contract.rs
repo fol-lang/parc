@@ -644,6 +644,34 @@ fn warnings_are_structured_ranged_and_informational() {
         .any(|file| file.id == range.file && file.role == SourceFileRole::Entry));
 }
 
+/// libsodium packs its hash states: a record defined under `#pragma pack` is
+/// refused, the record after the `pop` is not, and a routine that reaches no
+/// packed record still completes.
+#[test]
+fn a_pack_pragma_refuses_only_the_records_it_spans() {
+    let fixture = Fixture::new(
+        "pack-scope",
+        "#pragma pack(push, 1)\n\
+         struct packed_s { char a; int b; };\n\
+         #pragma pack(pop)\n\
+         struct natural_s { char a; int b; };\n\
+         int uses_packed(struct packed_s *p);\n\
+         int uses_natural(struct natural_s *n);\n",
+    );
+    let report = scan_headers(&fixture.config()).expect("pack scope scan");
+    assert!(!named(report.package(), "packed_s").support.is_supported());
+    assert!(named(report.package(), "natural_s").support.is_supported());
+    let natural = named(report.package(), "uses_natural").id;
+    let packed = named(report.package(), "uses_packed").id;
+    report
+        .clone()
+        .into_complete(&Selection::only([natural]).expect("natural root"))
+        .expect("a routine reaching no packed record completes");
+    assert!(report
+        .into_complete(&Selection::only([packed]).expect("packed root"))
+        .is_err());
+}
+
 #[test]
 fn unsupported_directives_pragmas_line_markers_and_midline_hash_fail_closed() {
     for (label, source, code, rejected) in [
@@ -651,7 +679,10 @@ fn unsupported_directives_pragmas_line_markers_and_midline_hash_fail_closed() {
         ("unknown", "#frobnicate value\n", "PARC-P2101", false),
         ("pragma", "#pragma vendor_magic\n", "PARC-P2103", false),
         ("line", "#line 42 \"other.h\"\n", "PARC-P2104", false),
-        ("pack", "#pragma pack(push, 1)\n", "PARC-E2104", true),
+        // A recognised pack is recorded and refuses only the records it
+        // spans; one whose form is unknown still refuses the package.
+        ("pack", "#pragma pack(push, 1)\n", "PARC-E2104", false),
+        ("pack-unknown", "#pragma pack(show)\n", "PARC-E2104", true),
         (
             "midline",
             "int before_hash; #include \"absent.h\"\n",
