@@ -673,6 +673,40 @@ fn unsupported_directives_pragmas_line_markers_and_midline_hash_fail_closed() {
     }
 }
 
+/// `#include MACRO` expands the operand and includes the header name it
+/// spells -- FreeType's `#include FT_FREETYPE_H`. An operand that spells none
+/// is reported, not searched for as a file named after the macro.
+#[test]
+fn computed_includes_expand_to_the_header_they_name() {
+    let fixture = Fixture::new(
+        "computed-include",
+        "#define INNER_H \"inner.h\"\n\
+         #define PICK(x) x\n\
+         #include INNER_H\n\
+         #include PICK(INNER_H)\n\
+         int outer_fn(void);\n",
+    );
+    std::fs::write(
+        fixture.root.join("inner.h"),
+        "#ifndef INNER_H_GUARD\n#define INNER_H_GUARD\nint inner_fn(void);\n#endif\n",
+    )
+    .expect("write inner header");
+    let package = scan_headers(&fixture.config())
+        .expect("computed include scan")
+        .into_package();
+    assert_eq!(package.completeness(), &Completeness::Complete);
+    assert!(named(&package, "inner_fn").support.is_supported());
+
+    let broken = Fixture::new(
+        "computed-include-broken",
+        "#define NOT_A_NAME 42\n#include NOT_A_NAME\n",
+    );
+    let package = scan_headers(&broken.config())
+        .expect("broken computed include scan")
+        .into_package();
+    assert_diagnostic(&package, "PARC-P2106");
+}
+
 /// A pragma that only selects warnings is not a gap in the scan.
 ///
 /// `#pragma GCC diagnostic push|pop|ignored` chooses which messages the

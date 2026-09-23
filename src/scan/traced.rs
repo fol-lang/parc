@@ -620,6 +620,17 @@ impl TracedProcessor<'_> {
                     start: tokens[directive_start].anchor.start,
                     end: tokens[directive_end.saturating_sub(1)].anchor.end,
                 };
+                // A computed include is expanded, then read as the header name
+                // it spells, and handled from there as if written that way.
+                let directive = match directive {
+                    Directive::IncludeComputed { tokens, next } if active => {
+                        match self.computed_include(&tokens, range) {
+                            Some((path, system)) => Directive::Include { path, system, next },
+                            None => continue,
+                        }
+                    }
+                    directive => directive,
+                };
                 match directive {
                     Directive::If { tokens } => {
                         let parent_active = active;
@@ -760,6 +771,9 @@ impl TracedProcessor<'_> {
                             }),
                         }
                     }
+                    // Only an inactive one reaches here; an active one was
+                    // rewritten into an `Include` above.
+                    Directive::IncludeComputed { .. } => {}
                     Directive::Error { message } => self.issues.push(TraceIssue {
                         code: "PARC-E2103",
                         severity: Severity::Error,
@@ -1132,6 +1146,37 @@ impl TracedProcessor<'_> {
             index = end;
         }
         result
+    }
+
+    /// The header name a computed `#include` operand expands to (C17
+    /// 6.10.2p4), or an issue saying it does not spell one.
+    fn computed_include(&mut self, tokens: &[Token], range: SourceRange) -> Option<(String, bool)> {
+        let provenance = provenance_for_role(self.files[&range.file].role, Vec::new());
+        let traced = tokens
+            .iter()
+            .map(|token| TracedToken {
+                kind: token.kind.clone(),
+                text: token.text.clone(),
+                anchor: range,
+                provenance: provenance.clone(),
+            })
+            .collect::<Vec<_>>();
+        let expanded = self.expand_tokens(traced, &mut Vec::new());
+        let spelled = crate::preprocess::expanded_header_name(
+            expanded
+                .iter()
+                .map(|token| (&token.kind, token.text.as_str())),
+        );
+        if spelled.is_none() {
+            self.issues.push(TraceIssue {
+                code: "PARC-P2106",
+                severity: Severity::Error,
+                impact: DiagnosticCompletenessImpact::ForcesPartial,
+                message: "computed include does not expand to a header name".to_owned(),
+                range: Some(range),
+            });
+        }
+        spelled
     }
 
     fn evaluate_condition(&mut self, tokens: &[Token], range: SourceRange) -> bool {

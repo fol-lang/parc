@@ -14,6 +14,7 @@ mod processor;
 mod token;
 
 pub use self::builtins::builtin_headers;
+pub(crate) use self::directive::expanded_header_name;
 pub use self::directive::{parse_directive, Directive};
 pub use self::expr::eval_condition;
 pub use self::include::{IncludeResolver, PreprocessResult};

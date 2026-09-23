@@ -22,6 +22,10 @@ pub enum Directive {
         system: bool,
         next: bool,
     },
+    /// `#include MACRO`: the operand is macro-expanded, and what it expands to
+    /// is then read as a `<...>` or `"..."` header name (C17 6.10.2p4).
+    /// FreeType's `#include FT_FREETYPE_H` is the idiom.
+    IncludeComputed { tokens: Vec<Token>, next: bool },
     /// `#if expr`
     If { tokens: Vec<Token> },
     /// `#ifdef NAME`
@@ -209,27 +213,45 @@ fn parse_undef(tokens: &[Token]) -> Directive {
 }
 
 fn parse_include(tokens: &[Token], next: bool) -> Directive {
-    let text = collect_text(tokens);
+    match header_name(&collect_text(tokens)) {
+        Some((path, system)) => Directive::Include { path, system, next },
+        None => Directive::IncludeComputed {
+            tokens: tokens.to_vec(),
+            next,
+        },
+    }
+}
+
+/// The header name a computed include's expanded tokens spell, joined without
+/// the whitespace between them.
+pub(crate) fn expanded_header_name<'a>(
+    tokens: impl IntoIterator<Item = (&'a TokenKind, &'a str)>,
+) -> Option<(String, bool)> {
+    let joined = tokens
+        .into_iter()
+        .filter(|(kind, _)| {
+            !matches!(
+                kind,
+                TokenKind::Whitespace
+                    | TokenKind::Newline
+                    | TokenKind::LineComment
+                    | TokenKind::BlockComment
+            )
+        })
+        .map(|(_, text)| text)
+        .collect::<String>();
+    header_name(&joined)
+}
+
+/// A `<path>` or `"path"` header name, and whether it is the `<...>` form.
+pub(crate) fn header_name(text: &str) -> Option<(String, bool)> {
     let trimmed = text.trim();
-    if trimmed.starts_with('<') && trimmed.ends_with('>') {
-        Directive::Include {
-            path: trimmed[1..trimmed.len() - 1].to_owned(),
-            system: true,
-            next,
-        }
-    } else if trimmed.starts_with('"') && trimmed.ends_with('"') {
-        Directive::Include {
-            path: trimmed[1..trimmed.len() - 1].to_owned(),
-            system: false,
-            next,
-        }
+    if trimmed.len() >= 2 && trimmed.starts_with('<') && trimmed.ends_with('>') {
+        Some((trimmed[1..trimmed.len() - 1].to_owned(), true))
+    } else if trimmed.len() >= 2 && trimmed.starts_with('"') && trimmed.ends_with('"') {
+        Some((trimmed[1..trimmed.len() - 1].to_owned(), false))
     } else {
-        // Macro-expanded include — return as-is
-        Directive::Include {
-            path: trimmed.to_owned(),
-            system: false,
-            next,
-        }
+        None
     }
 }
 

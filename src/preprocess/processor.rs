@@ -235,6 +235,34 @@ impl Processor {
                             });
                         }
                     }
+                    Directive::IncludeComputed {
+                        tokens: operand, ..
+                    } => {
+                        let expanded = self.macros.expand(&operand);
+                        let spelled = super::directive::expanded_header_name(
+                            expanded
+                                .iter()
+                                .map(|token| (&token.kind, token.text.as_str())),
+                        );
+                        match spelled {
+                            Some((path, system)) => {
+                                if let Some(inc_tokens) =
+                                    include_handler(&path, system, &mut self.macros)
+                                {
+                                    output.tokens.extend(inc_tokens);
+                                } else {
+                                    output.includes.push(IncludeRequest {
+                                        path,
+                                        system,
+                                        offset: tokens[dir_start].offset,
+                                    });
+                                }
+                            }
+                            None => output.errors.push(
+                                "computed #include does not expand to a header name".to_owned(),
+                            ),
+                        }
+                    }
                     Directive::Error { message } => {
                         output.errors.push(message);
                     }
