@@ -88,6 +88,8 @@ pub struct StructType {
     pub kind: Node<StructKind>,
     pub identifier: Option<Node<Identifier>>,
     pub declarations: Option<Vec<Node<StructDeclaration>>>,
+    /// GNU attributes written between the keyword and the tag.
+    pub extensions: Vec<Node<Extension>>,
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]

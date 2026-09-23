@@ -26,6 +26,15 @@ fn __parse_struct_or_union_specifier<'input>(__input: &'input str, __state: &mut
                     let __seq_res = __parse__(__input, __state, __pos, env);
                     match __seq_res {
                         Matched(__pos, _) => {
+                            // GNU attributes between the keyword and the tag:
+                            // `struct __attribute__((aligned(64))) name { ... }`.
+                            let (__pos, x) = match __parse_attribute_specifier_list(__input, __state, __pos, env) {
+                                Matched(__attr_pos, x) if !x.is_empty() => match __parse__(__input, __state, __attr_pos, env) {
+                                    Matched(__after, _) => (__after, x),
+                                    Failed => (__attr_pos, x),
+                                },
+                                _ => (__pos, Vec::new()),
+                            };
                             let __seq_res = match __parse_identifier(__input, __state, __pos, env) {
                                 Matched(__newpos, __value) => Matched(__newpos, Some(__value)),
                                 Failed => Matched(__pos, None),
@@ -37,7 +46,7 @@ fn __parse_struct_or_union_specifier<'input>(__input: &'input str, __state: &mut
                                         Matched(__pos, _) => {
                                             let __seq_res = __parse_struct_or_union_body(__input, __state, __pos, env);
                                             match __seq_res {
-                                                Matched(__pos, d) => Matched(__pos, { StructType { kind: t, identifier: i, declarations: d } }),
+                                                Matched(__pos, d) => Matched(__pos, { StructType { kind: t, identifier: i, declarations: d, extensions: x } }),
                                                 Failed => Failed,
                                             }
                                         }
@@ -82,7 +91,7 @@ fn __parse_struct_or_union_specifier<'input>(__input: &'input str, __state: &mut
                             Matched(__pos, _) => {
                                 let __seq_res = __parse_identifier(__input, __state, __pos, env);
                                 match __seq_res {
-                                    Matched(__pos, i) => Matched(__pos, { StructType { kind: t, identifier: Some(i), declarations: None } }),
+                                    Matched(__pos, i) => Matched(__pos, { StructType { kind: t, identifier: Some(i), declarations: None, extensions: Vec::new() } }),
                                     Failed => Failed,
                                 }
                             }

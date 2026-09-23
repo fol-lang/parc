@@ -672,6 +672,44 @@ fn a_pack_pragma_refuses_only_the_records_it_spans() {
         .is_err());
 }
 
+/// libsodium's `crypto_generichash_blake2b_state`: an `aligned(N)` attribute
+/// between `struct` and the tag is the record's requested alignment, and any
+/// other attribute there still refuses the record at completion.
+#[test]
+fn an_aligned_struct_attribute_is_the_records_alignment() {
+    let fixture = Fixture::new(
+        "aligned-record",
+        "typedef struct __attribute__((aligned(64))) aligned_tag {\n\
+             unsigned char opaque[384];\n\
+         } aligned_s;\n\
+         struct __attribute__((aligned(sizeof(long) * 2))) derived_s { char c; };\n\
+         struct __attribute__((packed)) marked_s { char c; int x; };\n\
+         struct natural_s { int x; };\n\
+         int uses_aligned(aligned_s *state);\n\
+         int uses_marked(struct marked_s *marked);\n",
+    );
+    let report = scan_headers(&fixture.config()).expect("aligned record scan");
+    let alignment = |name: &str| match &named(report.package(), name).kind {
+        SourceDeclarationKind::Record(record) => record.alignment_bytes,
+        other => panic!("{name} is not a record: {other:?}"),
+    };
+    assert!(named(report.package(), "aligned_tag")
+        .support
+        .is_supported());
+    assert_eq!(alignment("aligned_tag"), Some(64));
+    assert_eq!(alignment("derived_s"), Some(16));
+    assert_eq!(alignment("natural_s"), None);
+    let root = named(report.package(), "uses_aligned").id;
+    let marked = named(report.package(), "uses_marked").id;
+    report
+        .clone()
+        .into_complete(&Selection::only([root]).expect("aligned root"))
+        .expect("a routine reaching an aligned record completes");
+    assert!(report
+        .into_complete(&Selection::only([marked]).expect("marked root"))
+        .is_err());
+}
+
 #[test]
 fn unsupported_directives_pragmas_line_markers_and_midline_hash_fail_closed() {
     for (label, source, code, rejected) in [

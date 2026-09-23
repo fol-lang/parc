@@ -569,13 +569,40 @@ impl<'a> ContractExtractor<'a> {
                 .map(|identifier| identifier.node.name.as_str()),
             span,
         );
+        // `aligned(N)` with a power-of-two constant is modeled as the record's
+        // requested alignment; every other attribute is recorded as written,
+        // so one this does not model still marks the record partial.
+        let mut alignment_bytes = None;
+        let mut other_extensions = Vec::new();
+        for extension in &record.extensions {
+            let requested = match &extension.node {
+                Extension::Attribute(attribute)
+                    if matches!(attribute.name.node.as_str(), "aligned" | "__aligned__") =>
+                {
+                    match attribute.arguments.as_slice() {
+                        [argument] => eval_const_expr(&argument.node, &self.context.sizes)
+                            .and_then(|value| u64::try_from(value).ok())
+                            .filter(|value| value.is_power_of_two()),
+                        _ => None,
+                    }
+                }
+                _ => None,
+            };
+            match requested {
+                Some(bytes) => {
+                    alignment_bytes =
+                        Some(alignment_bytes.map_or(bytes, |seen: u64| seen.max(bytes)))
+                }
+                None => other_extensions.push(extension.clone()),
+            }
+        }
         self.add_occurrence(
             id,
             span,
             record.identifier.as_ref().map(|identifier| identifier.span),
             StorageClass::None,
             record.declarations.is_some(),
-            &[],
+            &other_extensions,
         );
 
         let mut fields = Vec::new();
@@ -674,6 +701,7 @@ impl<'a> ContractExtractor<'a> {
                     RecordCompleteness::Incomplete
                 },
                 fields,
+                alignment_bytes,
             }),
         );
     }

@@ -151,6 +151,12 @@ pub struct SourceRecord {
     pub kind: RecordKind,
     pub completeness: RecordCompleteness,
     pub fields: Vec<SourceField>,
+    /// A minimum alignment the declaration requests beyond its fields' own --
+    /// `struct __attribute__((aligned(64))) S` -- in bytes. Absent for the
+    /// natural alignment, which is what every record without the attribute
+    /// has, so such a package serializes exactly as it did.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub alignment_bytes: Option<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
