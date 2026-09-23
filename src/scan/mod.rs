@@ -372,34 +372,41 @@ pub fn scan_headers(config: &ScanConfig) -> Result<ScanReport, ScanError> {
     Ok(ScanReport::new(SourcePackage::try_new(input)?))
 }
 
-/// Refuse each record defined while `#pragma pack` was active, and only those.
+/// Give each record defined while `#pragma pack(N)` was active its packing
+/// width, and refuse one whose definition the packing changes inside of.
 ///
 /// Packing changes nothing but the layout of the records it spans, so a
-/// routine that never reaches one is not refused over it -- libsodium packs its
+/// routine that never reaches one is untouched by it -- libsodium packs its
 /// hash states, and a caller asking only for the one-shot hash names none.
 fn mark_packed_records(
     declarations: &mut [SourceDeclaration],
     diagnostics: &mut Vec<SourceDiagnostic>,
-    packed_ranges: &[(usize, usize)],
+    packed_ranges: &[(usize, usize, u64)],
     generated_file: FileId,
     target: TargetFingerprint,
 ) {
     for declaration in declarations {
-        if !matches!(declaration.kind, SourceDeclarationKind::Record(_)) {
-            continue;
-        }
-        let packed = declaration.occurrences.iter().find(|occurrence| {
-            occurrence.is_definition
-                && occurrence.range.file == generated_file
-                && packed_ranges.iter().any(|(start, end)| {
-                    occurrence.range.start < *end as u64 && (*start as u64) < occurrence.range.end
-                })
-        });
-        let Some(occurrence) = packed else {
+        let SourceDeclarationKind::Record(record) = &mut declaration.kind else {
             continue;
         };
-        let reason = "record is defined while #pragma pack is active, and its packed layout is \
-                      not modeled";
+        let Some(occurrence) = declaration.occurrences.iter().find(|occurrence| {
+            occurrence.is_definition
+                && occurrence.range.file == generated_file
+                && packed_ranges.iter().any(|(start, end, _)| {
+                    occurrence.range.start < *end as u64 && (*start as u64) < occurrence.range.end
+                })
+        }) else {
+            continue;
+        };
+        let enclosing = packed_ranges.iter().find(|(start, end, _)| {
+            *start as u64 <= occurrence.range.start && occurrence.range.end <= *end as u64
+        });
+        if let Some((_, _, width)) = enclosing {
+            record.packing_bytes = Some(*width);
+            continue;
+        }
+        let reason = "#pragma pack changes inside this record's definition, so no one packing \
+                      width describes its layout";
         diagnostics.push(SourceDiagnostic {
             code: diagnostic_code("PARC-E2104"),
             stage: DiagnosticStage::Extract,

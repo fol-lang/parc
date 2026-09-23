@@ -644,31 +644,47 @@ fn warnings_are_structured_ranged_and_informational() {
         .any(|file| file.id == range.file && file.role == SourceFileRole::Entry));
 }
 
-/// libsodium packs its hash states: a record defined under `#pragma pack` is
-/// refused, the record after the `pop` is not, and a routine that reaches no
-/// packed record still completes.
+/// libsodium packs its hash states: a record defined under `#pragma pack(N)`
+/// carries that width, a nested `push` and the `pop`s restore the outer one,
+/// and a record the packing changes inside of is refused on its own.
 #[test]
-fn a_pack_pragma_refuses_only_the_records_it_spans() {
+fn a_pack_pragma_sets_the_width_of_the_records_it_spans() {
     let fixture = Fixture::new(
         "pack-scope",
         "#pragma pack(push, 1)\n\
          struct packed_s { char a; int b; };\n\
+         #pragma pack(push, 4)\n\
+         struct wider_s { char a; double b; };\n\
+         #pragma pack(pop)\n\
+         typedef struct __attribute__((aligned(64))) state_tag { unsigned char o[384]; } state_s;\n\
          #pragma pack(pop)\n\
          struct natural_s { char a; int b; };\n\
+         struct split_s { char a;\n\
+         #pragma pack(push, 2)\n\
+         int b; };\n\
+         #pragma pack(pop)\n\
          int uses_packed(struct packed_s *p);\n\
-         int uses_natural(struct natural_s *n);\n",
+         int uses_split(struct split_s *s);\n",
     );
     let report = scan_headers(&fixture.config()).expect("pack scope scan");
-    assert!(!named(report.package(), "packed_s").support.is_supported());
-    assert!(named(report.package(), "natural_s").support.is_supported());
-    let natural = named(report.package(), "uses_natural").id;
+    let record = |name: &str| match &named(report.package(), name).kind {
+        SourceDeclarationKind::Record(record) => (record.packing_bytes, record.alignment_bytes),
+        other => panic!("{name} is not a record: {other:?}"),
+    };
+    assert_eq!(record("packed_s"), (Some(1), None));
+    assert_eq!(record("wider_s"), (Some(4), None));
+    assert_eq!(record("state_tag"), (Some(1), Some(64)));
+    assert_eq!(record("natural_s"), (None, None));
+    assert!(named(report.package(), "packed_s").support.is_supported());
+    assert!(!named(report.package(), "split_s").support.is_supported());
     let packed = named(report.package(), "uses_packed").id;
+    let split = named(report.package(), "uses_split").id;
     report
         .clone()
-        .into_complete(&Selection::only([natural]).expect("natural root"))
-        .expect("a routine reaching no packed record completes");
-    assert!(report
         .into_complete(&Selection::only([packed]).expect("packed root"))
+        .expect("a routine reaching a packed record completes");
+    assert!(report
+        .into_complete(&Selection::only([split]).expect("split root"))
         .is_err());
 }
 

@@ -157,6 +157,10 @@ pub struct SourceRecord {
     /// has, so such a package serializes exactly as it did.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub alignment_bytes: Option<u64>,
+    /// The `#pragma pack(N)` width, in bytes, active across the whole
+    /// definition: no member is aligned beyond it. Absent without packing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub packing_bytes: Option<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

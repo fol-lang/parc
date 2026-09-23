@@ -702,6 +702,7 @@ impl<'a> ContractExtractor<'a> {
                 },
                 fields,
                 alignment_bytes,
+                packing_bytes: None,
             }),
         );
     }

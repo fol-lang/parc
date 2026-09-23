@@ -286,6 +286,7 @@ fn fixture_input(partial: bool) -> SourcePackageInput {
             completeness: RecordCompleteness::Incomplete,
             fields: Vec::new(),
             alignment_bytes: None,
+            packing_bytes: None,
         }),
     );
 
@@ -357,6 +358,7 @@ fn fixture_input(partial: bool) -> SourcePackageInput {
             kind: RecordKind::Struct,
             completeness: RecordCompleteness::Complete,
             alignment_bytes: None,
+            packing_bytes: None,
             fields: vec![SourceField {
                 id: field_id,
                 name: Some(source_name("value")),
