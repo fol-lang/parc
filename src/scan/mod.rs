@@ -411,6 +411,7 @@ fn remap_extraction(
         declaration
             .occurrences
             .sort_by_key(|occurrence| occurrence.id);
+        let owner = &declaration.occurrences;
         match &mut declaration.kind {
             SourceDeclarationKind::Function(function) => {
                 for parameter in &mut function.parameters {
@@ -418,6 +419,7 @@ fn remap_extraction(
                         &mut parameter.range,
                         &mut parameter.provenance,
                         &mut parameter.attributes,
+                        owner,
                         trace,
                         generated_file,
                         &mut issues,
@@ -430,6 +432,7 @@ fn remap_extraction(
                         &mut field.range,
                         &mut field.provenance,
                         &mut field.attributes,
+                        owner,
                         trace,
                         generated_file,
                         &mut issues,
@@ -442,6 +445,7 @@ fn remap_extraction(
                         &mut variant.range,
                         &mut variant.provenance,
                         &mut variant.attributes,
+                        owner,
                         trace,
                         generated_file,
                         &mut issues,
@@ -476,18 +480,32 @@ fn remap_extraction(
     issues
 }
 
+/// A child is remapped only into an occurrence of its owner. An enum whose
+/// body `#include`s its enumerators from another file -- FreeType's error
+/// list -- has children that map cleanly while the owner spans two files and
+/// stays generated; each such child keeps its generated range, which the
+/// owner's generated occurrence contains.
+#[allow(clippy::too_many_arguments)]
 fn remap_child(
     range: &mut SourceRange,
     provenance: &mut SourceProvenance,
     attributes: &mut [SourceAttribute],
+    owner: &[DeclarationOccurrence],
     trace: &traced::TracedPreprocessed,
     generated_file: FileId,
     issues: &mut Vec<traced::TraceIssue>,
 ) {
     if range.file == generated_file {
         if let Some((mapped, mapped_provenance)) = map_contract_range(trace, *range) {
-            *range = mapped;
-            *provenance = mapped_provenance;
+            let inside_owner = owner.iter().any(|occurrence| {
+                occurrence.range.file == mapped.file
+                    && occurrence.range.start <= mapped.start
+                    && mapped.end <= occurrence.range.end
+            });
+            if inside_owner {
+                *range = mapped;
+                *provenance = mapped_provenance;
+            }
         } else {
             issues.push(provenance_gap(*range, "nested declaration range"));
         }

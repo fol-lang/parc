@@ -673,6 +673,33 @@ fn unsupported_directives_pragmas_line_markers_and_midline_hash_fail_closed() {
     }
 }
 
+/// FreeType's error list: an enum opened by one macro, closed by another, and
+/// filled by a file `#include`d in its body. The owner spans two files and has
+/// no single source range, so its enumerators keep ranges it contains rather
+/// than breaking the package contract.
+#[test]
+fn an_enum_whose_body_includes_its_enumerators_stays_within_contract() {
+    let fixture = Fixture::new(
+        "enum-body-include",
+        "#define LIST_START enum {\n\
+         #define LIST_END ERR_MAX };\n\
+         #define DEF(e, v) e = v,\n\
+         LIST_START\n\
+         #include \"errs.h\"\n\
+         LIST_END\n\
+         int after_fn(void);\n",
+    );
+    std::fs::write(
+        fixture.root.join("errs.h"),
+        "DEF(ERR_OK, 0)\nDEF(ERR_BAD, 1)\n",
+    )
+    .expect("write error list");
+    let package = scan_headers(&fixture.config())
+        .expect("an enum filled by an include must not violate the contract")
+        .into_package();
+    assert!(named(&package, "after_fn").support.is_supported());
+}
+
 /// `#include MACRO` expands the operand and includes the header name it
 /// spells -- FreeType's `#include FT_FREETYPE_H`. An operand that spells none
 /// is reported, not searched for as a file named after the macro.
