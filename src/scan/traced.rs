@@ -106,13 +106,32 @@ impl TracedPreprocessed {
         start: usize,
         end: usize,
     ) -> Option<(SourceRange, SourceProvenance)> {
-        let mut matching = self.segments.iter().filter(|segment| {
+        // Segments are written in output order, so their starts and ends both
+        // only grow: the first candidate is found by bisection, and the scan
+        // stops at the first segment starting past the range.
+        let first_candidate = self.segments.partition_point(|segment| {
             if start == end {
-                segment.generated_start <= start && start <= segment.generated_end
+                segment.generated_end < start
             } else {
-                segment.generated_start < end && segment.generated_end > start
+                segment.generated_end <= start
             }
         });
+        let mut matching = self.segments[first_candidate..]
+            .iter()
+            .take_while(|segment| {
+                if start == end {
+                    segment.generated_start <= start
+                } else {
+                    segment.generated_start < end
+                }
+            })
+            .filter(|segment| {
+                if start == end {
+                    segment.generated_start <= start && start <= segment.generated_end
+                } else {
+                    segment.generated_start < end && segment.generated_end > start
+                }
+            });
         let first = matching.next()?;
         let file = first.anchor.file;
         let mut mapped_start = first.anchor.start;
