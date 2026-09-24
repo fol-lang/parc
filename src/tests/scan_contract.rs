@@ -852,6 +852,11 @@ fn diagnostic_only_pragmas_are_recorded_without_forcing_partial() {
         ),
         ("pop", "#pragma GCC diagnostic pop\nint chosen;\n"),
         ("clang", "#pragma clang diagnostic push\nint chosen;\n"),
+        (
+            "intrinsics",
+            "#pragma GCC push_options\n#pragma GCC target(\"avx2\")\n\
+             #pragma GCC optimize (\"O3\")\nint chosen;\n#pragma GCC pop_options\n",
+        ),
     ] {
         let fixture = Fixture::new(label, source);
         let package = scan_headers(&fixture.config())
@@ -878,6 +883,26 @@ fn diagnostic_only_pragmas_are_recorded_without_forcing_partial() {
         package.completeness(),
         Completeness::Partial { .. }
     ));
+
+    // What a `target` pragma can change -- the convention of a vector-typed
+    // parameter -- is refused by its own type, so treating it as inert
+    // exposes nothing it moves.
+    let vector = Fixture::new(
+        "vector-under-target",
+        "#pragma GCC push_options\n#pragma GCC target(\"avx\")\n\
+         typedef float v8 __attribute__((__vector_size__(32)));\n\
+         v8 widen(v8 value);\nint scalar(int value);\n#pragma GCC pop_options\n",
+    );
+    let report = scan_headers(&vector.config()).expect("vector under target scan");
+    let widen = named(report.package(), "widen").id;
+    let scalar = named(report.package(), "scalar").id;
+    report
+        .clone()
+        .into_complete(&Selection::only([scalar]).expect("scalar root"))
+        .expect("a scalar routine under a target pragma completes");
+    assert!(report
+        .into_complete(&Selection::only([widen]).expect("vector root"))
+        .is_err());
 }
 
 #[test]

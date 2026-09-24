@@ -858,6 +858,33 @@ impl TracedProcessor<'_> {
                                     pack_mark: Some(self.packing),
                                 });
                             }
+                        } else if words.first() == Some(&"GCC")
+                            && words.get(1).is_some_and(|word| {
+                                matches!(*word, "push_options" | "pop_options")
+                                    || word.starts_with("target")
+                                    || word.starts_with("optimize")
+                            })
+                        {
+                            // Code generation, and nothing else. The x86
+                            // intrinsics headers wrap their inline definitions
+                            // in `push_options` / `target("avx2")` /
+                            // `pop_options`: the instruction set and
+                            // optimisation level of the functions compiled
+                            // after it. No record layout depends on it, and
+                            // the one calling convention `target` can move --
+                            // vector-typed parameters -- is refused on its own
+                            // as an unsupported type, so no binding can reach
+                            // a declaration it changes.
+                            self.issues.push(TraceIssue {
+                                code: "PARC-P2105",
+                                severity: Severity::Note,
+                                impact: DiagnosticCompletenessImpact::Informational,
+                                message: format!(
+                                    "code-generation pragma has no effect on the scan: {}",
+                                    spelling.trim()
+                                ),
+                                range: Some(range),
+                            });
                         } else if matches!(words.first(), Some(&"GCC" | &"clang"))
                             && words.get(1) == Some(&"diagnostic")
                         {
